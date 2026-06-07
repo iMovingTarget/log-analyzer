@@ -1,0 +1,8 @@
+[
+  "tests/test_core.py::test_analyze_lines_counts_and_alerts",
+  "tests/test_core.py::test_classification",
+  "tests/test_core.py::test_extract_ip_found",
+  "tests/test_core.py::test_extract_ip_invalid_octets",
+  "tests/test_core.py::test_extract_ip_none",
+  "tests/test_core.py::test_min_events_filters_ips"
+]

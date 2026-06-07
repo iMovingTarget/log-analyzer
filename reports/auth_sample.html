@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log Report - auth_sample.log</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
+.meta { margin-bottom: 16px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background: #f5f5f5; }
+tr.alert { background: #fff3cd; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; }
+.badge.alert { background: #ffecb5; }
+.controls { display: flex; gap: 12px; align-items: center; margin: 12px 0 16px; flex-wrap: wrap; }
+.controls input[type="search"] { padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; min-width: 260px; }
+.controls label { display: inline-flex; gap: 8px; align-items: center; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { text-decoration: underline; }
+.small { color: #666; font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>Log report</h1>
+  <div class="meta">
+    <div><b>File:</b> auth_sample.log</div>
+    <div><b>Total lines:</b> 5</div>
+    <div><b>Accepted:</b> 1 &nbsp; <b>Failed:</b> 3</div>
+    <div><b>Fail threshold:</b> 1</div>
+    <div class="badge alert">ALERTS present</div>
+  </div>
+
+  <div class="controls">
+    <input id="q" type="search" placeholder="Search IP / numbers…" autocomplete="off" />
+    <label><input id="onlyAlerts" type="checkbox" /> Only alerts</label>
+    <span class="small" id="count"></span>
+  </div>
+
+  <h2>By IP</h2>
+  
+  <table>
+    <thead>
+        <th class="sortable" data-key="ip" data-type="text">IP</th>
+        <th class="sortable" data-key="total" data-type="num">Total</th>
+        <th class="sortable" data-key="failed" data-type="num">Failed</th>
+        <th class="sortable" data-key="accepted" data-type="num">Accepted</th>
+        <th class="sortable" data-key="alert" data-type="text">Alert</th>
+    </thead>
+    <tbody>
+<tr class='alert' data-ip='203.0.113.7' data-total='2' data-failed='2' data-accepted='0' data-alert='YES'><td>203.0.113.7</td><td>2</td><td>2</td><td>0</td><td>YES</td></tr>
+</tbody>
+  </table>
+
+  <script>
+    (function () {
+      const q = document.getElementById('q');
+      const onlyAlerts = document.getElementById('onlyAlerts');
+      const count = document.getElementById('count');
+      const tbody = document.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      const headers = Array.from(document.querySelectorAll('th.sortable'));
+
+      function visibleRows() {
+        const query = (q.value || '').trim().toLowerCase();
+        const only = !!onlyAlerts.checked;
+        let shown = 0;
+
+        for (const tr of rows) {
+          const hay = [
+            tr.dataset.ip,
+            tr.dataset.total,
+            tr.dataset.failed,
+            tr.dataset.accepted,
+            tr.dataset.alert
+          ].join(' ').toLowerCase();
+
+          const matchQuery = !query || hay.includes(query);
+          const matchAlert = !only || tr.classList.contains('alert');
+
+          const show = matchQuery && matchAlert;
+          tr.style.display = show ? '' : 'none';
+          if (show) shown++;
+        }
+        count.textContent = `Showing ${shown} / ${rows.length}`;
+      }
+
+      function sortBy(key, type, direction) {
+        const dir = direction === 'desc' ? -1 : 1;
+        const get = (tr) => tr.dataset[key] ?? '';
+
+        const compare = (a, b) => {
+          const va = get(a);
+          const vb = get(b);
+          if (type === 'num') {
+            return (Number(va) - Number(vb)) * dir;
+          }
+          return va.localeCompare(vb) * dir;
+        };
+
+        const sorted = rows.slice().sort(compare);
+        for (const tr of sorted) tbody.appendChild(tr);
+      }
+
+      q.addEventListener('input', visibleRows);
+      onlyAlerts.addEventListener('change', visibleRows);
+
+      const state = { key: null, dir: 'asc' };
+      headers.forEach((th) => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.key;
+          const type = th.dataset.type || 'text';
+          state.dir = (state.key === key && state.dir === 'asc') ? 'desc' : 'asc';
+          state.key = key;
+          sortBy(key, type, state.dir);
+          visibleRows();
+        });
+      });
+
+      visibleRows();
+    })();
+  </script>
+</body>
+</html>
