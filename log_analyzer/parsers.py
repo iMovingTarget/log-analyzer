@@ -56,3 +56,30 @@ class SSHParser(BaseParser):
     def detect(cls, sample: list[str]) -> bool:
         kw = ("failed password", "accepted password", "invalid user", "sshd")
         return any(any(k in l.lower() for k in kw) for l in sample)
+NGINX_RE = re.compile(
+    r'(?P\S+) \S+ \S+ \[[^\]]+\] '
+    r'"\S+ \S+[^"]*" (?P\d{3})'
+)
+
+
+class NginxParser(BaseParser):
+
+    def parse_line(self, line: str) -> ParsedEvent | None:
+        m = NGINX_RE.match(line.strip())
+        if not m:
+            return None
+        ip = m.group("ip")
+        if not is_valid_ipv4(ip):
+            return None
+        status = int(m.group("status"))
+        etype = "failed" if status >= 400 else "accepted"
+        return ParsedEvent(
+            ip=ip,
+            event_type=etype,
+            raw=line,
+            extra={"status": status},
+        )
+
+    @classmethod
+    def detect(cls, sample: list[str]) -> bool:
+        return sum(1 for l in sample if NGINX_RE.match(l.strip())) >= 2
