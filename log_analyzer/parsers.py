@@ -24,7 +24,7 @@ class BaseParser(ABC):
         """Return True if this parser recognises the log format."""
         ...
 
-        
+
 import re
 
 
@@ -98,3 +98,14 @@ class ApacheParser(NginxParser):
         apache_kw = ("apache", "httpd", "mod_")
         has_kw = any(any(k in l.lower() for k in apache_kw) for l in sample)
         return has_kw and NginxParser.detect(sample)
+
+    
+ALL_PARSERS = [SSHParser, NginxParser, ApacheParser]
+
+
+def detect_parser(lines: list[str]) -> BaseParser:
+    sample = [l for l in lines[:100] if l.strip()]
+    for cls in ALL_PARSERS:
+        if cls.detect(sample):
+            return cls()
+    return SSHParser()   # safe default

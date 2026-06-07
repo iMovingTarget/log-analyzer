@@ -48,6 +48,19 @@ def main() -> int:
         print(f"File not found: {args.file}")
         return 2
 
+
+    from log_analyzer.parsers import detect_parser, SSHParser, NginxParser, ApacheParser
+
+    _format_map = {"ssh": SSHParser, "nginx": NginxParser, "apache": ApacheParser}
+
+    if args.log_format == "auto":
+        parser = detect_parser(lines)
+    else:
+        parser = _format_map[args.log_format]()
+
+    print(f"Using parser: {type(parser).__name__}")
+
+
     report, ip_counter, failed_counter, accepted_counter = analyze_lines(
     lines,
     top=args.top,
@@ -83,5 +96,14 @@ def main() -> int:
 
     return 0
 
+
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+p.add_argument(
+    "--log-format",
+    choices=["auto", "ssh", "nginx", "apache"],
+    default="auto",
+    help="Log format to parse (default: auto-detect)",
+)
