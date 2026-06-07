@@ -56,4 +56,4 @@ def test_min_events_filters_ips():
 
 def test_extract_ip_invalid_octets():
     assert extract_ip("Connection from 999.0.0.1 port 22") is None
-    assert extract_ip("Connection from 203.0.113.7 port 22") == "203.0.113.7
+    assert extract_ip("Connection from 203.0.113.7 port 22") == "203.0.113.7"
