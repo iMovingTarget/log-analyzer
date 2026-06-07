@@ -23,12 +23,17 @@ class BaseParser(ABC):
     def detect(cls, sample: list[str]) -> bool:
         """Return True if this parser recognises the log format."""
         ...
+
+        
 import re
+
 
 IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
+
 def is_valid_ipv4(ip: str) -> bool:
     return all(0 <= int(o) <= 255 for o in ip.split("."))
+
 
 def extract_ip(line: str) -> str | None:
     m = IP_RE.search(line)
@@ -83,3 +88,13 @@ class NginxParser(BaseParser):
     @classmethod
     def detect(cls, sample: list[str]) -> bool:
         return sum(1 for l in sample if NGINX_RE.match(l.strip())) >= 2
+
+
+class ApacheParser(NginxParser):
+    """Apache combined log — same format as Nginx, different detection."""
+
+    @classmethod
+    def detect(cls, sample: list[str]) -> bool:
+        apache_kw = ("apache", "httpd", "mod_")
+        has_kw = any(any(k in l.lower() for k in apache_kw) for l in sample)
+        return has_kw and NginxParser.detect(sample)
