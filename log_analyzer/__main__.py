@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--db-user", default="root")
     p.add_argument("--db-password", default="")
     p.add_argument("--db-name", default="log_analyzer")
+    p.add_argument(
+        "--watch",
+        action="store_true",
+        help="Tail the log file and print alerts in real time",
+    )
     return p.parse_args()
 
 
@@ -76,6 +81,28 @@ def main() -> int:
         )
         html_out.write_text(html_doc, encoding="utf-8")
         print(f"Wrote HTML → {html_out}")
+
+
+    if args.watch:
+        from log_analyzer.parsers import detect_parser
+        from log_analyzer.watch import tail_file
+
+        lines_sample = lines[:200]
+        parser = detect_parser(lines_sample)
+        print(f"[watch] Parser: {type(parser).__name__}")
+        threshold = args.fail_threshold
+
+        counts: dict[str, int] = {}
+
+        def on_line(line: str) -> None:
+            event = parser.parse_line(line)
+            if event and event.event_type == "failed":
+                counts[event.ip] = counts.get(event.ip, 0) + 1
+                if counts[event.ip] >= threshold:
+                    print(f"[ALERT] {event.ip} — {counts[event.ip]} failures")
+
+        tail_file(args.file, on_line)
+
 
     if not args.no_db:
         from log_analyzer.storage import SQLiteStore, MySQLStore
