@@ -30,6 +30,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log-format", choices=["auto", "ssh", "nginx", "apache"], default="auto")
     p.add_argument("--no-db", action="store_true", help="Skip saving to database")
     p.add_argument("--db", type=Path, default=Path("reports.db"))
+    p.add_argument("--db-type", choices=["sqlite","mysql"], default="sqlite")
+    p.add_argument("--db-host", default="localhost")
+    p.add_argument("--db-user", default="root")
+    p.add_argument("--db-password", default="")
+    p.add_argument("--db-name", default="log_analyzer")
     return p.parse_args()
 
 
@@ -73,9 +78,14 @@ def main() -> int:
         print(f"Wrote HTML → {html_out}")
 
     if not args.no_db:
-        store = SQLiteStore(args.db)
+        from log_analyzer.storage import SQLiteStore, MySQLStore
+        if args.db_type == "mysql":
+            store = MySQLStore(args.db_host, args.db_user,
+                            args.db_password, args.db_name)
+        else:
+            store = SQLiteStore(args.db)
         run_id = store.save(report)
-        print(f"Saved to DB: {args.db} (run #{run_id})")
+        print(f"Saved to {args.db_type} DB (run #{run_id})")
 
     return 0
 

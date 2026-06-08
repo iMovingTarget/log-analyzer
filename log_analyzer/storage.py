@@ -52,3 +52,63 @@ class SQLiteStore:
                 "SELECT * FROM runs ORDER BY run_at DESC LIMIT ?", (limit,)
             ).fetchall()
             return [dict(r) for r in rows]
+        
+        
+class MySQLStore:
+    """MySQL/MariaDB backend — same interface as SQLiteStore."""
+
+    def __init__(self, host: str, user: str, password: str, database: str):
+        try:
+            import mysql.connector
+            self._mysql = mysql.connector
+        except ImportError:
+            raise RuntimeError(
+                "mysql-connector-python not installed.\n"
+                "Run: pip install mysql-connector-python"
+            )
+        self.config = dict(host=host, user=user,
+                           password=password, database=database)
+        self._init()
+
+    def _init(self) -> None:
+        with self._mysql.connect(**self.config) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS runs (
+                        id          INT AUTO_INCREMENT PRIMARY KEY,
+                        file        VARCHAR(500),
+                        run_at      DATETIME,
+                        total_lines INT,
+                        failed      INT,
+                        accepted    INT,
+                        alerts      JSON
+                    )
+                """)
+            conn.commit()
+
+    def save(self, report: Report) -> int:
+        with self._mysql.connect(**self.config) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO runs
+                       (file, run_at, total_lines, failed, accepted, alerts)
+                       VALUES (%s, NOW(), %s, %s, %s, %s)""",
+                    (
+                        report.file,
+                        report.total_lines,
+                        report.failed_total,
+                        report.accepted_total,
+                        json.dumps(report.alerts),
+                    ),
+                )
+                conn.commit()
+                return cur.lastrowid  # type: ignore
+
+    def history(self, limit: int = 10) -> list[dict]:
+        with self._mysql.connect(**self.config) as conn:
+            with conn.cursor(dictionary=True) as cur:
+                cur.execute(
+                    "SELECT * FROM runs ORDER BY run_at DESC LIMIT %s",
+                    (limit,)
+                )
+                return cur.fetchall()
