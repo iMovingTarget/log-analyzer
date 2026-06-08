@@ -74,8 +74,18 @@ def resolve_output_paths(out: Path, file_stem: str) -> tuple[Path, Path, Path]:
         out.with_suffix(".html"),
     )
 
-def print_console_report(report: Report, top: int, fail_threshold: int) -> None:
+def print_console_report(report: Report, top: int, fail_threshold: int, geoip_db: Path | None = None) -> None:
     file_name = Path(report.file).name if report.file else ""
+
+    top_ips_formatted = [
+        f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]"
+        for ip, n in report.top_ips
+    ]
+    
+    failed_by_ip_formatted = [
+        f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]"
+        for ip, n in report.failed_by_ip
+    ]
 
     lines: list[str] = [
         f"\nFile: {file_name}",
@@ -83,10 +93,10 @@ def print_console_report(report: Report, top: int, fail_threshold: int) -> None:
         f"Accepted: {report.accepted_total} | Failed: {report.failed_total}",
         "",
         f"Top {top} IPs:",
-        *[f"  {ip:15}  {n}" for ip, n in report.top_ips],
+        *top_ips_formatted,
         "",
         f"Top {top} FAILED by IP:",
-        *[f"  {ip:15}  {n}" for ip, n in report.failed_by_ip],
+        *failed_by_ip_formatted,
     ]
 
     if report.alerts:
@@ -94,7 +104,7 @@ def print_console_report(report: Report, top: int, fail_threshold: int) -> None:
             "",
             "ALERTS (failed >= threshold):",
             *[
-                f"  {ip:15}  failed={n}  (threshold={fail_threshold})"
+                f"  {ip:15}  failed={n:<5} (threshold={fail_threshold})  [{lookup_country(ip, geoip_db) or '??'}]"
                 for ip, n in report.alerts
             ],
         ]
@@ -304,3 +314,14 @@ def load_ip_list(path: Path | None) -> set[str]:
         return set()
     lines = path.read_text(encoding="utf-8").splitlines()
     return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
+
+
+def lookup_country(ip: str, db_path: Path | None) -> str | None:
+    if db_path is None or not db_path.exists():
+        return None
+    try:
+        import geoip2.database
+        with geoip2.database.Reader(str(db_path)) as reader:
+            return reader.country(ip).country.iso_code
+    except Exception:
+        return None

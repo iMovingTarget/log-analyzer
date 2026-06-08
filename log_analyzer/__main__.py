@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--rate-limit", type=int, default=10)
     p.add_argument("--allowlist", type=Path, default=None)
     p.add_argument("--blocklist", type=Path, default=None)
+    p.add_argument("--geoip-db", type=Path, default=None)
     p.add_argument(
         "--watch",
         action="store_true",
