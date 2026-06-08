@@ -35,6 +35,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--db-user", default="root")
     p.add_argument("--db-password", default="")
     p.add_argument("--db-name", default="log_analyzer")
+    p.add_argument("--rate-window", type=int, default=60)
+    p.add_argument("--rate-limit", type=int, default=10)
     p.add_argument(
         "--watch",
         action="store_true",
@@ -86,20 +88,22 @@ def main() -> int:
     if args.watch:
         from log_analyzer.parsers import detect_parser
         from log_analyzer.watch import tail_file
+        from log_analyzer.core import RateTracker
 
         lines_sample = lines[:200]
         parser = detect_parser(lines_sample)
         print(f"[watch] Parser: {type(parser).__name__}")
         threshold = args.fail_threshold
+        tracker = RateTracker(window_seconds=args.rate_window, max_events=args.rate_limit)
 
         counts: dict[str, int] = {}
 
         def on_line(line: str) -> None:
             event = parser.parse_line(line)
             if event and event.event_type == "failed":
-                counts[event.ip] = counts.get(event.ip, 0) + 1
-                if counts[event.ip] >= threshold:
-                    print(f"[ALERT] {event.ip} — {counts[event.ip]} failures")
+                if tracker.record(event.ip):
+                    print(f"[RATE ALERT] {event.ip} — exceeded "
+                        f"{args.rate_limit} events in {args.rate_window}s")
 
         tail_file(args.file, on_line)
 

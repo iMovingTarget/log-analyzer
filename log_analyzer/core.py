@@ -5,7 +5,22 @@ from typing import Iterable
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
+class RateTracker:
+    def __init__(self, window_seconds: int = 60, max_events: int = 10):
+        self.window = timedelta(seconds=window_seconds)
+        self.max_events = max_events
+        self._events: dict[str, list[datetime]] = defaultdict(list)
+
+    def record(self, ip: str) -> bool:
+        now = datetime.now(timezone.utc)
+        cutoff = now - self.window
+        self._events[ip] = [t for t in self._events[ip] if t > cutoff]
+        self._events[ip].append(now)
+        return len(self._events[ip]) >= self.max_events
+    
 class Severity(str, Enum):
     INFO     = "INFO"
     WARNING  = "WARNING"
