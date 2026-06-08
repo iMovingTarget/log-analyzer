@@ -4,7 +4,19 @@ import re
 from typing import Iterable
 from collections import Counter
 from dataclasses import dataclass
+from enum import Enum
 
+class Severity(str, Enum):
+    INFO     = "INFO"
+    WARNING  = "WARNING"
+    CRITICAL = "CRITICAL"
+
+def classify_severity(failed: int, threshold: int) -> Severity:
+    if failed >= threshold * 3:
+        return Severity.CRITICAL
+    if failed >= threshold:
+        return Severity.WARNING
+    return Severity.INFO
 
 @dataclass
 class Report:
@@ -14,7 +26,8 @@ class Report:
     failed_total: int
     accepted_total: int
     failed_by_ip: list[tuple[str, int]]
-    alerts: list[tuple[str, int]]  # (ip, failed_count)    
+    alerts: list[tuple[str, int]]
+    severity: str = "INFO" 
 
 
 IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -67,15 +80,26 @@ def analyze_lines(
     alerts = [(ip, n) for ip, n in failed_counter.items() if n >= fail_threshold]
     alerts.sort(key=lambda x: x[1], reverse=True)
 
+    
+    overall = Severity.INFO
+    for _, n in alerts:
+        s = classify_severity(n, fail_threshold)
+        if s == Severity.CRITICAL:
+            overall = Severity.CRITICAL
+            break
+        if s == Severity.WARNING:
+            overall = Severity.WARNING
+
     report = Report(
-    file=file,  # passed in, not mutated after
+    file=file,
     total_lines=total_lines,
     top_ips=top_ips,
     failed_total=failed_total,
     accepted_total=accepted_total,
     failed_by_ip=failed_by_ip,
     alerts=alerts,
-    )
+    severity=overall,
+)
 
     return report, ip_counter, failed_counter, accepted_counter
 

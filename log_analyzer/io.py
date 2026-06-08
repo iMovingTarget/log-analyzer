@@ -52,6 +52,7 @@ def _tr(cells: str, *, alert: bool) -> str:
 
 
 def read_lines(path: Path) -> list[str]:
+    path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
     return path.read_text(encoding="utf-8").splitlines()
@@ -100,6 +101,7 @@ def print_console_report(report: Report, top: int, fail_threshold: int) -> None:
     else:
         lines += ["", "No alerts 🎉"]
 
+    print(f"Severity: {report.severity}")
     print("\n".join(lines))
 
 
