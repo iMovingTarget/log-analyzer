@@ -12,8 +12,8 @@ from log_analyzer.io import (
     write_csv_report,
     write_json_report,
     render_html_report,
+    load_ip_list,
 )
-from log_analyzer.storage import SQLiteStore
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,13 +30,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log-format", choices=["auto", "ssh", "nginx", "apache"], default="auto")
     p.add_argument("--no-db", action="store_true", help="Skip saving to database")
     p.add_argument("--db", type=Path, default=Path("reports.db"))
-    p.add_argument("--db-type", choices=["sqlite","mysql"], default="sqlite")
+    p.add_argument("--db-type", choices=["sqlite", "mysql"], default="sqlite")
     p.add_argument("--db-host", default="localhost")
     p.add_argument("--db-user", default="root")
     p.add_argument("--db-password", default="")
     p.add_argument("--db-name", default="log_analyzer")
     p.add_argument("--rate-window", type=int, default=60)
     p.add_argument("--rate-limit", type=int, default=10)
+    p.add_argument("--allowlist", type=Path, default=None)
+    p.add_argument("--blocklist", type=Path, default=None)
     p.add_argument(
         "--watch",
         action="store_true",
@@ -54,12 +56,17 @@ def main() -> int:
         print(f"File not found: {args.file}")
         return 2
 
+    allowlist = load_ip_list(args.allowlist)
+    blocklist = load_ip_list(args.blocklist)
+
     report, ip_counter, failed_counter, accepted_counter = analyze_lines(
         lines,
         top=args.top,
         fail_threshold=args.fail_threshold,
         min_events=args.min_events,
         file=str(args.file),
+        allowlist=allowlist,
+        blocklist=blocklist,
     )
 
     print_console_report(report, args.top, args.fail_threshold)
@@ -84,7 +91,6 @@ def main() -> int:
         html_out.write_text(html_doc, encoding="utf-8")
         print(f"Wrote HTML → {html_out}")
 
-
     if args.watch:
         from log_analyzer.parsers import detect_parser
         from log_analyzer.watch import tail_file
@@ -93,26 +99,22 @@ def main() -> int:
         lines_sample = lines[:200]
         parser = detect_parser(lines_sample)
         print(f"[watch] Parser: {type(parser).__name__}")
-        threshold = args.fail_threshold
         tracker = RateTracker(window_seconds=args.rate_window, max_events=args.rate_limit)
-
-        counts: dict[str, int] = {}
 
         def on_line(line: str) -> None:
             event = parser.parse_line(line)
             if event and event.event_type == "failed":
                 if tracker.record(event.ip):
                     print(f"[RATE ALERT] {event.ip} — exceeded "
-                        f"{args.rate_limit} events in {args.rate_window}s")
+                          f"{args.rate_limit} events in {args.rate_window}s")
 
         tail_file(args.file, on_line)
-
 
     if not args.no_db:
         from log_analyzer.storage import SQLiteStore, MySQLStore
         if args.db_type == "mysql":
             store = MySQLStore(args.db_host, args.db_user,
-                            args.db_password, args.db_name)
+                               args.db_password, args.db_name)
         else:
             store = SQLiteStore(args.db)
         run_id = store.save(report)

@@ -297,3 +297,10 @@ def render_html_report(
 </body>
 </html>
 """
+
+
+def load_ip_list(path: Path | None) -> set[str]:
+    if path is None or not path.exists():
+        return set()
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
