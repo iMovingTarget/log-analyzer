@@ -1,6 +1,6 @@
 from log_analyzer.parsers import (
-    SSHParser, NginxParser, ApacheParser,
-    detect_parser, extract_ip, is_valid_ipv4,
+    SSHParser, NginxParser,
+    detect_parser, is_valid_ipv4,
 )
 
 
@@ -84,3 +84,13 @@ def test_valid_ip():
 def test_invalid_ip():
     assert is_valid_ipv4("999.0.0.1") is False
     assert is_valid_ipv4("256.1.1.1") is False
+
+# --- is_valid_ipv6 ---
+
+def test_extract_ip_ipv6():
+    from log_analyzer.parsers import extract_ip
+    assert extract_ip("Failed password from 2001:db8::1 port 22") == "2001:db8::1"
+
+def test_extract_ip_prefers_ipv4():
+    from log_analyzer.parsers import extract_ip
+    assert extract_ip("Connection from 203.0.113.7 (2001:db8::1)") == "203.0.113.7"

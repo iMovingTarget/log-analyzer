@@ -1,4 +1,6 @@
 from __future__ import annotations
+import re
+import ipaddress
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
@@ -25,10 +27,19 @@ class BaseParser(ABC):
         ...
 
 
-import re
-
-
 IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+IPV6_RE = re.compile(
+    r"(?:[0-9a-fA-F]{1,4}:){1,7}:|"
+    r"(?:[0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|"
+    r"(?:[0-9a-fA-F]{1,4}:){1,5}(?::[0-9a-fA-F]{1,4}){1,2}|"
+    r"(?:[0-9a-fA-F]{1,4}:){1,4}(?::[0-9a-fA-F]{1,4}){1,3}|"
+    r"(?:[0-9a-fA-F]{1,4}:){1,3}(?::[0-9a-fA-F]{1,4}){1,4}|"
+    r"(?:[0-9a-fA-F]{1,4}:){1,2}(?::[0-9a-fA-F]{1,4}){1,5}|"
+    r"[0-9a-fA-F]{1,4}:(?::[0-9a-fA-F]{1,4}){1,6}|"
+    r":(?:(?::[0-9a-fA-F]{1,4}){1,7}|:)|"
+    r"(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}"
+)
+IP_CANDIDATE_RE = re.compile(r"\b[0-9a-fA-F:\.]+\b")
 
 
 def is_valid_ipv4(ip: str) -> bool:
@@ -36,9 +47,21 @@ def is_valid_ipv4(ip: str) -> bool:
 
 
 def extract_ip(line: str) -> str | None:
-    m = IP_RE.search(line)
-    if m and is_valid_ipv4(m.group(0)):
-        return m.group(0)
+    """Extracts the first valid IPv4 or IPv6 address from a line."""
+    # Find all potential chunks that look like IP addresses
+    for match in IP_CANDIDATE_RE.finditer(line):
+        candidate = match.group(0)
+        
+        # Strip trailing or leading periods/colons if caught near boundaries
+        candidate = candidate.strip(":.")
+        
+        try:
+            # Let Python's native network library validate the string
+            ip = ipaddress.ip_address(candidate)
+            return str(ip)
+        except ValueError:
+            continue
+            
     return None
 
 
@@ -60,10 +83,12 @@ class SSHParser(BaseParser):
     @classmethod
     def detect(cls, sample: list[str]) -> bool:
         kw = ("failed password", "accepted password", "invalid user", "sshd")
-        return any(any(k in l.lower() for k in kw) for l in sample)
+        return any(any(k in line.lower() for k in kw) for line in sample)
+
+  
 NGINX_RE = re.compile(
-    r'(?P\S+) \S+ \S+ \[[^\]]+\] '
-    r'"\S+ \S+[^"]*" (?P\d{3})'
+    r'(?P<ip>\S+) \S+ \S+ \[[^\]]+\] '
+    r'"\S+ \S+[^"]*" (?P<status>\d{3})'
 )
 
 
@@ -87,7 +112,7 @@ class NginxParser(BaseParser):
 
     @classmethod
     def detect(cls, sample: list[str]) -> bool:
-        return sum(1 for l in sample if NGINX_RE.match(l.strip())) >= 2
+        return sum(1 for line in sample if NGINX_RE.match(line.strip())) >= 2
 
 
 class ApacheParser(NginxParser):
@@ -96,15 +121,15 @@ class ApacheParser(NginxParser):
     @classmethod
     def detect(cls, sample: list[str]) -> bool:
         apache_kw = ("apache", "httpd", "mod_")
-        has_kw = any(any(k in l.lower() for k in apache_kw) for l in sample)
+        has_kw = any(any(k in line.lower() for k in apache_kw) for line in sample)
         return has_kw and NginxParser.detect(sample)
 
-    
+
 ALL_PARSERS = [SSHParser, NginxParser, ApacheParser]
 
 
 def detect_parser(lines: list[str]) -> BaseParser:
-    sample = [l for l in lines[:100] if l.strip()]
+    sample = [line for line in lines[:100] if line.strip()]
     for cls in ALL_PARSERS:
         if cls.detect(sample):
             return cls()
