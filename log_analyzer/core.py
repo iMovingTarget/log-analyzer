@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import ipaddress
 from typing import Iterable
 from collections import Counter
 from dataclasses import dataclass
@@ -45,9 +46,7 @@ class Report:
     severity: str = "INFO" 
 
 
-IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-def is_valid_ipv4(ip: str) -> bool:
-    return all(0 <= int(octet) <= 255 for octet in ip.split("."))
+IP_CANDIDATE_RE = re.compile(r"\b[0-9a-fA-F:\.]+\b")
 
 
 def analyze_lines(
@@ -57,34 +56,48 @@ def analyze_lines(
     fail_threshold: int,
     min_events: int = 1,
     file: str = "",
-    ) -> tuple[Report, Counter[str], Counter[str], Counter[str]]:
+    allowlist: Iterable[str] | None = None,
+    blocklist: Iterable[str] | None = None,
+) -> tuple[Report, Counter[str], Counter[str], Counter[str]]:
     lines = list(lines)
     total_lines = len(lines)
+    
+    # 1. Lists for bulk Counter construction
+    all_ips: list[str] = []
+    all_failed: list[str] = []
+    all_accepted: list[str] = []
 
-    ip_counter: Counter[str] = Counter()
-    failed_counter: Counter[str] = Counter()
-    accepted_counter: Counter[str] = Counter()
+    allow_set = set(allowlist) if allowlist else None
+    block_set = set(blocklist) if blocklist else None
 
-    failed_total = 0
-    accepted_total = 0
-
+    # 2. Fast loop using appends
     for line in lines:
         ip = extract_ip(line)
         if not ip:
             continue
 
-        ip_counter[ip] += 1
+        if allow_set and ip not in allow_set:
+            continue
+        if block_set and ip in block_set:
+            continue
+
+        all_ips.append(ip)
 
         if is_failed(line):
-            failed_total += 1
-            failed_counter[ip] += 1
+            all_failed.append(ip)
         elif is_accepted(line):
-            accepted_total += 1
-            accepted_counter[ip] += 1
+            all_accepted.append(ip)
+
+    # 3. Build Counters and totals once at the end
+    ip_counter = Counter(all_ips)
+    failed_counter = Counter(all_failed)
+    accepted_counter = Counter(all_accepted)
+    
+    failed_total = len(all_failed)
+    accepted_total = len(all_accepted)
 
     if min_events > 1:
         allowed = {ip for ip, total in ip_counter.items() if total >= min_events}
-
         ip_counter = Counter({ip: count for ip, count in ip_counter.items() if ip in allowed})
         failed_counter = Counter({ip: count for ip, count in failed_counter.items() if ip in allowed})
         accepted_counter = Counter({ip: count for ip, count in accepted_counter.items() if ip in allowed})        
@@ -95,7 +108,6 @@ def analyze_lines(
     alerts = [(ip, n) for ip, n in failed_counter.items() if n >= fail_threshold]
     alerts.sort(key=lambda x: x[1], reverse=True)
 
-    
     overall = Severity.INFO
     for _, n in alerts:
         s = classify_severity(n, fail_threshold)
@@ -106,23 +118,27 @@ def analyze_lines(
             overall = Severity.WARNING
 
     report = Report(
-    file=file,
-    total_lines=total_lines,
-    top_ips=top_ips,
-    failed_total=failed_total,
-    accepted_total=accepted_total,
-    failed_by_ip=failed_by_ip,
-    alerts=alerts,
-    severity=overall,
-)
+        file=file,
+        total_lines=total_lines,
+        top_ips=top_ips,
+        failed_total=failed_total,
+        accepted_total=accepted_total,
+        failed_by_ip=failed_by_ip,
+        alerts=alerts,
+        severity=overall,
+    )
 
     return report, ip_counter, failed_counter, accepted_counter
 
 
 def extract_ip(line: str) -> str | None:
-    m = IP_RE.search(line)
-    if m and is_valid_ipv4(m.group(0)):
-        return m.group(0)
+    for match in IP_CANDIDATE_RE.finditer(line):
+        candidate = match.group(0).strip(":.")
+        try:
+            ip = ipaddress.ip_address(candidate)
+            return str(ip)
+        except ValueError:
+            continue
     return None
 
 
