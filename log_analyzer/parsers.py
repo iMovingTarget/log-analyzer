@@ -87,7 +87,9 @@ class NginxParser(BaseParser):
         if not m:
             return None
         ip = m.group("ip")
-        if not is_valid_ipv4(ip):
+        try:
+            ipaddress.ip_address(ip)
+        except ValueError:
             return None
         status = int(m.group("status"))
         etype = "failed" if status >= 400 else "accepted"
