@@ -1,9 +1,0 @@
-{
-  "file": "auth_sample.log",
-  "total_lines": 5,
-  "top_ips": [],
-  "failed_total": 3,
-  "accepted_total": 1,
-  "failed_by_ip": [],
-  "alerts": []
-}
