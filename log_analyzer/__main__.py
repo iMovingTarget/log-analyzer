@@ -70,7 +70,7 @@ def main() -> int:
         blocklist=blocklist,
     )
 
-    print_console_report(report, args.top, args.fail_threshold)
+    print_console_report(report, args.top, args.fail_threshold, geoip_db=args.geoip_db)
 
     json_out, csv_out, html_out = resolve_output_paths(args.out, args.file.stem)
 
@@ -92,6 +92,16 @@ def main() -> int:
         html_out.write_text(html_doc, encoding="utf-8")
         print(f"Wrote HTML → {html_out}")
 
+    if not args.no_db:
+        from log_analyzer.storage import SQLiteStore, MySQLStore
+        if args.db_type == "mysql":
+            store = MySQLStore(args.db_host, args.db_user,
+                               args.db_password, args.db_name)
+        else:
+            store = SQLiteStore(args.db)
+        run_id = store.save(report)
+        print(f"Saved to {args.db_type} DB (run #{run_id})")
+        
     if args.watch:
         from log_analyzer.parsers import detect_parser
         from log_analyzer.watch import tail_file
@@ -111,15 +121,6 @@ def main() -> int:
 
         tail_file(args.file, on_line)
 
-    if not args.no_db:
-        from log_analyzer.storage import SQLiteStore, MySQLStore
-        if args.db_type == "mysql":
-            store = MySQLStore(args.db_host, args.db_user,
-                               args.db_password, args.db_name)
-        else:
-            store = SQLiteStore(args.db)
-        run_id = store.save(report)
-        print(f"Saved to {args.db_type} DB (run #{run_id})")
 
     return 0
 
