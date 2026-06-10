@@ -1,7 +1,5 @@
 from __future__ import annotations
-
-import re
-import ipaddress
+from log_analyzer.parsers import extract_ip
 from typing import Iterable
 from collections import Counter
 from dataclasses import dataclass
@@ -44,9 +42,6 @@ class Report:
     failed_by_ip: list[tuple[str, int]]
     alerts: list[tuple[str, int]]
     severity: str = "INFO" 
-
-
-IP_CANDIDATE_RE = re.compile(r"\b[0-9a-fA-F:\.]+\b")
 
 
 def analyze_lines(
@@ -132,17 +127,6 @@ def analyze_lines(
     )
 
     return report, ip_counter, failed_counter, accepted_counter
-
-
-def extract_ip(line: str) -> str | None:
-    for match in IP_CANDIDATE_RE.finditer(line):
-        candidate = match.group(0).strip(":.")
-        try:
-            ip = ipaddress.ip_address(candidate)
-            return str(ip)
-        except ValueError:
-            continue
-    return None
 
 
 def is_failed(line: str) -> bool:

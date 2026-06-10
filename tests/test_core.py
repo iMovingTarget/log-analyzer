@@ -1,5 +1,7 @@
+from log_analyzer.parsers import extract_ip, is_valid_ipv4
 from log_analyzer.core import extract_ip, is_failed, is_accepted, analyze_lines
 from log_analyzer.core import RateTracker
+
 
 
 def test_rate_tracker_fires_at_limit():
@@ -11,7 +13,8 @@ def test_rate_tracker_fires_at_limit():
 
 def test_rate_tracker_independent_ips():
     rt = RateTracker(window_seconds=60, max_events=2)
-    rt.record("1.1.1.1"); rt.record("1.1.1.1")
+    rt.record("1.1.1.1")
+    rt.record("1.1.1.1")
     assert rt.record("2.2.2.2") is False
 
 
