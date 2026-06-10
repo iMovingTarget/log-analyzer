@@ -1,36 +1,42 @@
-# CLI Log Analyzer (Python)
+REPLACE WITH / ADD:
+# log-analyzer
 
-A small CLI tool that parses SSH/auth-style logs (and a sample format), aggregates events by IP, detects brute-force-like activity, and generates reports.
+A production-grade Linux security log analysis CLI tool.
+Parses SSH/auth, Nginx, and Apache logs — aggregates events by IP,
+detects brute-force activity, classifies severity, and generates reports.
 
 ## Features
-- Parse log file from CLI (`--file`)
-- Extract IPv4 using regex
-- Classify events:
-  - **failed**: `failed password`, `invalid user`
-  - **accepted**: `accepted password`
-- Aggregation:
-  - total events per IP
-  - failed per IP
-  - accepted per IP
-- Alerts when `failed >= --fail-threshold`
-- Reports:
-  - JSON
-  - CSV
-  - HTML
-- Select output format via `--format` (`csv|json|html|all`)
+- Multi-format parsing: SSH/auth, Nginx, Apache (auto-detected)
+- IPv4 and IPv6 support
+- Severity classification: INFO / WARNING / CRITICAL
+- Real-time watch mode (--watch) with rate-based alerting
+- Allowlist and blocklist support
+- Optional GeoIP country lookup (MaxMind GeoLite2)
+- Structured output: JSON (SIEM-ready), CSV, HTML report
+- Persistent storage: SQLite (default) or MySQL/MariaDB
 
 ## Project structure
-- `log_analyzer/core.py` — pure logic (parsing + aggregation), easy to test
-- `log_analyzer/io.py` — reading files + writing CSV/JSON + HTML rendering
-- `log_analyzer/__main__.py` — CLI entrypoint (orchestrates the flow)
-- `tests/` — pytest unit tests for core
+
+    log_analyzer/
+      core.py      — analysis engine, Report dataclass, RateTracker
+      parsers.py   — BaseParser ABC, SSHParser, NginxParser, ApacheParser
+      io.py        — file I/O, report rendering, GeoIP lookup
+      storage.py   — SQLiteStore, MySQLStore
+      watch.py     — real-time log tailing
+      __main__.py  — CLI entrypoint
+    tests/
+      test_core.py
+      test_parsers.py
+      fixtures/
+
+## Quick start
+
+    pip install .
+    log-analyzer --file /var/log/auth.log
+    log-analyzer --file access.log --log-format nginx --fail-threshold 5
+    log-analyzer --file auth.log --watch --rate-limit 10 --rate-window 60
 
 ## Requirements
-- Python 3.10+ (recommended)
-- Windows / macOS / Linux
-
-## Run
-From the project root:
-
-```powershell
-python -m log_analyzer --file auth_sample.log --fail-threshold 3
+- Python 3.10+
+- Optional: geoip2 (pip install geoip2) + GeoLite2-Country.mmdb
+- Optional: mysql-connector-python for MySQL backend
