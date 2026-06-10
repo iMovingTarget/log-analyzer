@@ -17,7 +17,10 @@ class RateTracker:
         cutoff = now - self.window
         self._events[ip] = [t for t in self._events[ip] if t > cutoff]
         self._events[ip].append(now)
-        return len(self._events[ip]) >= self.max_events
+        result = len(self._events[ip]) >= self.max_events
+        if not self._events[ip]:  # evict empty buckets
+            del self._events[ip]
+        return result
     
 class Severity(str, Enum):
     INFO     = "INFO"
