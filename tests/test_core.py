@@ -1,4 +1,3 @@
-from log_analyzer.parsers import extract_ip, is_valid_ipv4
 from log_analyzer.core import extract_ip, is_failed, is_accepted, analyze_lines
 from log_analyzer.core import RateTracker
 
