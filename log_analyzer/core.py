@@ -1,11 +1,10 @@
 from __future__ import annotations
 from log_analyzer.parsers import extract_ip
 from typing import Iterable
-from collections import Counter
+from datetime import datetime, timedelta, timezone
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
 
 class RateTracker:
     def __init__(self, window_seconds: int = 60, max_events: int = 10):

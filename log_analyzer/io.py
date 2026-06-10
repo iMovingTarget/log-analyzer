@@ -4,11 +4,9 @@ import csv
 import html
 import json
 from collections import Counter
-from dataclasses import asdict
 from pathlib import Path
-
+from dataclasses import asdict, dataclass
 from log_analyzer.core import Report
-from dataclasses import dataclass
 
 
 HTML_STYLE = """
