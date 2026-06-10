@@ -1,5 +1,5 @@
 from __future__ import annotations
-from log_analyzer.parsers import extract_ip
+from log_analyzer.parsers import BaseParser, extract_ip
 from typing import Iterable
 from datetime import datetime, timedelta, timezone
 from collections import Counter, defaultdict
@@ -55,11 +55,11 @@ def analyze_lines(
     file: str = "",
     allowlist: Iterable[str] | None = None,
     blocklist: Iterable[str] | None = None,
+    parser: BaseParser | None = None,
 ) -> tuple[Report, Counter[str], Counter[str], Counter[str]]:
     lines = list(lines)
     total_lines = len(lines)
     
-    # 1. Lists for bulk Counter construction
     all_ips: list[str] = []
     all_failed: list[str] = []
     all_accepted: list[str] = []
@@ -67,26 +67,34 @@ def analyze_lines(
     allow_set = set(allowlist) if allowlist else None
     block_set = set(blocklist) if blocklist else None
 
-    # 2. Fast loop using appends
     for line in lines:
         ip = extract_ip(line)
         if not ip:
             continue
 
-        if allow_set and ip in allow_set:
-            continue  # trusted IP — skip
+        # FIX: Only allow processing if the IP is INSIDE the allowlist
+        if allow_set and ip not in allow_set:
+            continue  
+            
         if block_set and ip in block_set:
-            # blocklisted — always count as failed
             all_ips.append(ip)
             all_failed.append(ip)
             continue
 
         all_ips.append(ip)
 
-        if is_failed(line):
-            all_failed.append(ip)
-        elif is_accepted(line):
-            all_accepted.append(ip)
+        if parser is not None:
+            event = parser.parse_line(line)
+            if event and event.event_type == "failed":
+                all_failed.append(ip)
+            elif event and event.event_type == "accepted":
+                all_accepted.append(ip)
+        else:
+            if is_failed(line):
+                all_failed.append(ip)
+            elif is_accepted(line):
+                all_accepted.append(ip)
+
 
     # 3. Build Counters and totals once at the end
     ip_counter = Counter(all_ips)
