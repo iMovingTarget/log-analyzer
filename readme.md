@@ -15,6 +15,10 @@ detects brute-force activity, classifies severity, and generates reports.
 - Optional GeoIP country lookup (MaxMind GeoLite2)
 - Structured output: JSON (SIEM-ready), CSV, HTML report
 - Persistent storage: SQLite (default) or MySQL/MariaDB
+- SIEM-ready JSONL event stream (--siem-out) — one structured event per line
+- HTML report includes an inline bar chart of top failed IPs
+- Installable as a CLI command via pip install -e .
+- Tested automatically on every push via GitHub Actions
 
 ## Project structure
 
@@ -32,10 +36,13 @@ detects brute-force activity, classifies severity, and generates reports.
 
 ## Quick start
 
-    pip install .
+    pip install -e .
     log-analyzer --file /var/log/auth.log
     log-analyzer --file access.log --log-format nginx --fail-threshold 5
     log-analyzer --file auth.log --watch --rate-limit 10 --rate-window 60
+    log-analyzer --file auth.log --siem-out events.jsonl
+
+Run `log-analyzer --help` for the full list of options and examples.
 
 ## Requirements
 - Python 3.10+
