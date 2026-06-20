@@ -72,10 +72,9 @@ def analyze_lines(
         if not ip:
             continue
 
-        # FIX: Only allow processing if the IP is INSIDE the allowlist
-        if allow_set and ip not in allow_set:
-            continue  
-            
+        if allow_set and ip in allow_set:
+            continue  # trusted IP — skip entirely
+
         if block_set and ip in block_set:
             all_ips.append(ip)
             all_failed.append(ip)
