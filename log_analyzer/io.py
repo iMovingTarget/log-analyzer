@@ -206,6 +206,7 @@ def render_html_report(
 ) -> str:
     rows = _build_rows(ip_counter, failed_counter, accepted_counter, fail_threshold)
     meta_html = _render_meta(file_name, report, fail_threshold)
+    chart_html = _render_bar_chart(rows)
     table_html = _render_table(rows)
 
     controls_html = """
@@ -229,6 +230,8 @@ def render_html_report(
 <body>
   <h1>Log report</h1>
   {meta_html}
+
+  {chart_html}
 
   {controls_html}
 
@@ -328,3 +331,35 @@ def lookup_country(ip: str, db_path: Path | None) -> str | None:
         return _geoip_reader_cache[key].country(ip).country.iso_code
     except Exception:
         return None
+    
+def _render_bar_chart(rows: list[Row], max_bars: int = 10) -> str:
+    """Simple horizontal bar chart of failed counts per IP, pure SVG."""
+    top = sorted(rows, key=lambda r: r.failed, reverse=True)[:max_bars]
+    if not top:
+        return ""
+
+    max_failed = max(r.failed for r in top) or 1
+    bar_height = 22
+    gap = 6
+    chart_height = len(top) * (bar_height + gap)
+    label_width = 140
+    chart_width = 420
+
+    bars = []
+    for i, r in enumerate(top):
+        y = i * (bar_height + gap)
+        w = int((r.failed / max_failed) * chart_width)
+        color = "#d9534f" if r.alert else "#5b8def"
+        bars.append(
+            f'{_esc(r.ip)}'
+            f''
+            f'{r.failed}'
+        )
+
+    svg_width = label_width + chart_width + 50
+    return f"""
+  
+Top failed IPs
+
+  
+""".strip()    
