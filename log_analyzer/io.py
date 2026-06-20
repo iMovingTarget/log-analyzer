@@ -314,12 +314,16 @@ def load_ip_list(path: Path | None) -> set[str]:
     return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
 
 
+_geoip_reader_cache: dict[str, "geoip2.database.Reader"] = {}
+
 def lookup_country(ip: str, db_path: Path | None) -> str | None:
     if db_path is None or not db_path.exists():
         return None
+    key = str(db_path)
     try:
         import geoip2.database
-        with geoip2.database.Reader(str(db_path)) as reader:
-            return reader.country(ip).country.iso_code
+        if key not in _geoip_reader_cache:
+            _geoip_reader_cache[key] = geoip2.database.Reader(key)
+        return _geoip_reader_cache[key].country(ip).country.iso_code
     except Exception:
         return None
