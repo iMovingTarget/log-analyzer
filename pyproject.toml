@@ -1,0 +1,22 @@
+[project]
+name = "log-analyzer"
+version = "0.4.0"
+description = "A security log analysis CLI — parses SSH, Nginx, and Apache logs, detects brute-force activity, and generates structured reports."
+authors = [{ name = "Serhii Papp" }]
+requires-python = ">=3.10"
+readme = "readme.md"
+license = { file = "LICENSE" }
+
+[project.optional-dependencies]
+geoip = ["geoip2"]
+mysql = ["mysql-connector-python"]
+
+[project.scripts]
+log-analyzer = "log_analyzer.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["log_analyzer*"]
