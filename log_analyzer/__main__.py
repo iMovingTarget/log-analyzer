@@ -42,8 +42,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--watch",
         action="store_true",
-        help="Tail the log file and print alerts in real time",
-    )
+        help="Tail the log file and print alerts in real time",)
+    p.add_argument("--siem-out", type=Path, default=None,
+        help="Write SIEM-format JSONL events to this path (one event per line)")
     return p.parse_args()
 
 
@@ -99,6 +100,12 @@ def main() -> int:
         )
         html_out.write_text(html_doc, encoding="utf-8")
         print(f"Wrote HTML → {html_out}")
+
+    if args.siem_out:
+        from log_analyzer.siem import build_siem_events, write_siem_jsonl
+        events = build_siem_events(lines, parser, str(args.file), args.fail_threshold)
+        write_siem_jsonl(args.siem_out, events)
+        print(f"Wrote {len(events)} SIEM events → {args.siem_out}")    
 
     if not args.no_db:
         from log_analyzer.storage import SQLiteStore, MySQLStore
