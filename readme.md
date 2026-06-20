@@ -1,4 +1,3 @@
-REPLACE WITH / ADD:
 # log-analyzer
 
 A production-grade Linux security log analysis CLI tool.
