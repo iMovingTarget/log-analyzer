@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
@@ -10,6 +10,7 @@ reports/
 reports.db
 reports.csv
 report.json
+sample.log
 *.log
 *.mmdb
 test_large.log
