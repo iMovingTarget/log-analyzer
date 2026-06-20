@@ -18,7 +18,16 @@ from log_analyzer.io import (
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="log-analyzer",
-        description="Mini Log Analyzer: stats + alerts + JSON report",
+        description="Security log analyzer — parses SSH, Nginx, and Apache logs, "
+                     "detects brute-force activity, and generates structured reports.",
+        epilog="""examples:
+  log-analyzer --file /var/log/auth.log
+  log-analyzer --file access.log --log-format nginx --fail-threshold 5
+  log-analyzer --file auth.log --watch --rate-limit 10 --rate-window 60
+  log-analyzer --file auth.log --siem-out events.jsonl
+  log-analyzer --file auth.log --allowlist trusted_ips.txt --blocklist known_bad.txt
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--format", choices=["csv", "json", "html", "all"], default="all")
     p.add_argument("--min-events", type=int, default=1)
