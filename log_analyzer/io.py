@@ -109,7 +109,7 @@ def print_console_report(report: Report, top: int, fail_threshold: int, geoip_db
     else:
         lines += ["", "No alerts 🎉"]
 
-    print(f"Severity: {report.severity}")
+    print(f"Severity: {getattr(report.severity, 'value', report.severity)}")
     print("\n".join(lines))
 
 
