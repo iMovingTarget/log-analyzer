@@ -7,6 +7,7 @@ from collections import Counter
 from pathlib import Path
 from dataclasses import asdict, dataclass
 from log_analyzer.core import Report
+from typing import Any
 
 
 HTML_STYLE = """
@@ -314,7 +315,7 @@ def load_ip_list(path: Path | None) -> set[str]:
     return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
 
 
-_geoip_reader_cache: dict[str, "geoip2.database.Reader"] = {}
+_geoip_reader_cache: dict[str, Any] = {}
 
 def lookup_country(ip: str, db_path: Path | None) -> str | None:
     if db_path is None or not db_path.exists():
