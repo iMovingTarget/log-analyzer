@@ -59,6 +59,14 @@ def main() -> int:
     allowlist = load_ip_list(args.allowlist)
     blocklist = load_ip_list(args.blocklist)
 
+    from log_analyzer.parsers import detect_parser, SSHParser, NginxParser, ApacheParser
+    _fmt = {"ssh": SSHParser, "nginx": NginxParser, "apache": ApacheParser}
+    if args.log_format == "auto":
+        parser = detect_parser(lines)
+    else:
+        parser = _fmt[args.log_format]()
+    print(f"Parser: {type(parser).__name__}")
+
     report, ip_counter, failed_counter, accepted_counter = analyze_lines(
         lines,
         top=args.top,
@@ -67,6 +75,7 @@ def main() -> int:
         file=str(args.file),
         allowlist=allowlist,
         blocklist=blocklist,
+        parser=parser,
     )
 
     print_console_report(report, args.top, args.fail_threshold, geoip_db=args.geoip_db)
@@ -95,16 +104,7 @@ def main() -> int:
     if args.watch:
         from log_analyzer.watch import tail_file
         from log_analyzer.core import RateTracker
-        from log_analyzer.parsers import detect_parser, SSHParser, NginxParser, ApacheParser
-        _fmt = {"ssh": SSHParser, "nginx": NginxParser, "apache": ApacheParser}
-        if args.log_format == "auto":
-            parser = detect_parser(lines)
-        else:
-            parser = _fmt[args.log_format]()
-        print(f"Parser: {type(parser).__name__}")
-        lines_sample = lines[:200]
-        parser = detect_parser(lines_sample)
-        print(f"[watch] Parser: {type(parser).__name__}")
+        # parser was already detected above — no need to detect it again
         tracker = RateTracker(window_seconds=args.rate_window, max_events=args.rate_limit)
 
         def on_line(line: str) -> None:
