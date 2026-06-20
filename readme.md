@@ -1,3 +1,5 @@
+![Tests](https://github.com/iMovingTarget/log-analyzer/actions/workflows/tests.yml/badge.svg)
+
 # log-analyzer
 
 A production-grade Linux security log analysis CLI tool.
