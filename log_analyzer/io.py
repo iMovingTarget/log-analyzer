@@ -45,11 +45,6 @@ def _td(x: object) -> str:
     return f"<td>{_esc(x)}</td>"
 
 
-def _tr(cells: str, *, alert: bool) -> str:
-    cls = "alert" if alert else ""
-    return f"<tr class='{cls}'>{cells}</tr>"
-
-
 def read_lines(path: Path) -> list[str]:
     path = Path(path)
     if not path.exists():
