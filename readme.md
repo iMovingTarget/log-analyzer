@@ -1,4 +1,4 @@
-![Tests](https://github.com/iMovingTarget/log-analyzer/actions/workflows/tests.yml/badge.svg)
+![Tests](https://github.com/iMovingTarget/log_analyzer/actions/workflows/tests.yml/badge.svg)
 
 # log-analyzer
 
