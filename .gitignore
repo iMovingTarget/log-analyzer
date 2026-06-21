@@ -12,5 +12,7 @@ reports.csv
 report.json
 sample.log
 *.log
+!tests/fixtures/*.log
+*.jsonl
 *.mmdb
 test_large.log
