@@ -1,6 +1,6 @@
 from log_analyzer.parsers import (
     SSHParser, NginxParser,
-    detect_parser, is_valid_ipv4,
+    detect_parser,
 )
 
 
@@ -72,20 +72,6 @@ def test_detect_nginx():
 
 def test_detect_fallback_is_ssh():
     assert isinstance(detect_parser(["totally random noise"]), SSHParser)
-
-
-# --- is_valid_ipv4 ---
-
-def test_valid_ip():
-    assert is_valid_ipv4("203.0.113.7") is True
-    assert is_valid_ipv4("0.0.0.0") is True
-    assert is_valid_ipv4("255.255.255.255") is True
-
-def test_invalid_ip():
-    assert is_valid_ipv4("999.0.0.1") is False
-    assert is_valid_ipv4("256.1.1.1") is False
-
-# --- is_valid_ipv6 ---
 
 def test_extract_ip_ipv6():
     from log_analyzer.parsers import extract_ip

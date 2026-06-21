@@ -30,10 +30,6 @@ class BaseParser(ABC):
 IP_CANDIDATE_RE = re.compile(r"\b[0-9a-fA-F:\.]+\b")
 
 
-def is_valid_ipv4(ip: str) -> bool:
-    return all(0 <= int(o) <= 255 for o in ip.split("."))
-
-
 def extract_ip(line: str) -> str | None:
     """Extracts the first valid IPv4 or IPv6 address from a line."""
     # Find all potential chunks that look like IP addresses
