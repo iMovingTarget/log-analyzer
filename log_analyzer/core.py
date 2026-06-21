@@ -95,7 +95,6 @@ def analyze_lines(
                 all_accepted.append(ip)
 
 
-    # 3. Build Counters and totals once at the end
     ip_counter = Counter(all_ips)
     failed_counter = Counter(all_failed)
     accepted_counter = Counter(all_accepted)
