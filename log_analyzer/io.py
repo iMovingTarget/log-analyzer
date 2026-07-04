@@ -328,40 +328,37 @@ def lookup_country(ip: str, db_path: Path | None) -> str | None:
         return None
     
 def _render_bar_chart(rows: list[Row], max_bars: int = 10) -> str:
-    """Horizontal bar chart of failed counts per IP, rendered as plain SVG.
-
-    No external charting library on purpose -- the HTML report stays a
-    single self-contained file that still works with no internet access.
-    """
     top = sorted(rows, key=lambda r: r.failed, reverse=True)[:max_bars]
+    top = [r for r in top if r.failed > 0]
     if not top:
         return ""
 
     max_failed = max(r.failed for r in top) or 1
     bar_height = 22
     gap = 6
+    chart_height = len(top) * (bar_height + gap)
     label_width = 140
     chart_width = 420
-    chart_height = len(top) * (bar_height + gap)
     svg_width = label_width + chart_width + 50
 
-    bars: list[str] = []
+    bars = []
     for i, r in enumerate(top):
         y = i * (bar_height + gap)
         w = int((r.failed / max_failed) * chart_width)
         color = "#d9534f" if r.alert else "#5b8def"
         bars.append(
-            f'<text x="0" y="{y + bar_height - 6}" font-size="12">{_esc(r.ip)}</text>'
+            f'<text x="{label_width - 8}" y="{y + 15}" text-anchor="end" '
+            f'font-size="12">{_esc(r.ip)}</text>'
             f'<rect x="{label_width}" y="{y}" width="{w}" height="{bar_height}" '
-            f'fill="{color}" rx="3"/>'
-            f'<text x="{label_width + w + 6}" y="{y + bar_height - 6}" '
+            f'fill="{color}" rx="3"></rect>'
+            f'<text x="{label_width + w + 6}" y="{y + 15}" '
             f'font-size="12">{r.failed}</text>'
         )
 
     return (
-        '  <h2>Top failed IPs</h2>\n'
-        f'  <svg width="{svg_width}" height="{chart_height}" '
-        f'viewBox="0 0 {svg_width} {chart_height}">\n'
-        f'    {"".join(bars)}\n'
-        '  </svg>'
-    ) 
+        '<h2>Top failed IPs</h2>\n'
+        f'<svg width="{svg_width}" height="{chart_height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img">\n'
+        + "\n".join(bars)
+        + '\n</svg>'
+    )
