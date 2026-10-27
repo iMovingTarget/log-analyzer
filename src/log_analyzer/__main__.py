@@ -161,13 +161,15 @@ def _write_reports(
         print(f"Wrote HTML -> {html_out}")
 
 
-def _write_siem_events(args: argparse.Namespace, lines: list[str], parser: BaseParser) -> None:
+def _write_siem_events(
+    args: argparse.Namespace, lines: list[str], parser: BaseParser, blocklist: set[str]
+) -> None:
     """Write SIEM-format JSONL events, only if --siem-out was given."""
     if not args.siem_out:
         return
     from log_analyzer.siem import build_siem_events, write_siem_jsonl
 
-    events = build_siem_events(lines, parser, str(args.file), args.fail_threshold)
+    events = build_siem_events(lines, parser, str(args.file), args.fail_threshold, blocklist)
     write_siem_jsonl(args.siem_out, events)
     print(f"Wrote {len(events)} SIEM events -> {args.siem_out}")
 
@@ -234,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print_console_report(report, args.top, args.fail_threshold, geoip_db=args.geoip_db)
     _write_reports(args, report, ip_counter, failed_counter, accepted_counter)
-    _write_siem_events(args, lines, parser)
+    _write_siem_events(args, lines, parser, blocklist)
     _persist_to_storage(args, report)  # must run before watch -- tail_file() never returns
     _run_watch_mode(args, parser)
 

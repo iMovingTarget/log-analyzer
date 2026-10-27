@@ -103,3 +103,41 @@ def test_extract_ip_ipv6():
 
 def test_extract_ip_prefers_first_address():
     assert extract_ip("Connection from 203.0.113.7 (2001:db8::1)") == "203.0.113.7"
+
+
+# --- timestamps ---
+
+
+def test_bsd_syslog_time_infers_year_and_uses_local_zone():
+    from datetime import datetime
+
+    p = SSHParser(now=datetime(2026, 3, 1))
+    e = p.parse_line("Feb  5 12:10:01 host sshd[1]: Failed password for root from 1.2.3.4")
+    assert e.timestamp == datetime(2026, 2, 5, 12, 10, 1).astimezone()
+
+
+def test_bsd_syslog_time_rolls_back_a_year_across_new_year():
+    from datetime import datetime
+
+    p = SSHParser(now=datetime(2026, 1, 2))
+    e = p.parse_line("Dec 31 23:59:59 host sshd[1]: Failed password for root from 1.2.3.4")
+    assert e.timestamp.year == 2025
+
+
+def test_iso_syslog_time_keeps_its_offset():
+    from datetime import datetime, timedelta, timezone
+
+    e = SSHParser().parse_line(
+        "2026-02-05T12:10:01.250000+01:00 host sshd[1]: Accepted publickey for bob from 1.2.3.4"
+    )
+    assert e.timestamp == datetime(
+        2026, 2, 5, 12, 10, 1, 250000, tzinfo=timezone(timedelta(hours=1))
+    )
+
+
+def test_access_log_time_parsed():
+    from datetime import datetime, timezone
+
+    assert AccessLogParser().parse_line(LINE_200).timestamp == datetime(
+        2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc
+    )

@@ -6,6 +6,7 @@ import ipaddress
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from itertools import islice
 
 
@@ -15,6 +16,8 @@ class ParsedEvent:
     event_type: str  # "failed" | "accepted" | "other"
     raw: str
     extra: dict = field(default_factory=dict)
+    #: When the event happened, timezone-aware; None if the line has no parseable time.
+    timestamp: datetime | None = None
 
 
 class BaseParser(ABC):
@@ -45,6 +48,78 @@ def extract_ip(line: str) -> str | None:
     return None
 
 
+# --- Timestamps -------------------------------------------------------------
+
+_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1
+    )
+}
+
+# RFC 3339 prefix, as written by rsyslog's high-precision format and journalctl -o short-iso.
+ISO_TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}:?\d{2})?")
+# Classic BSD syslog prefix: "Feb  5 12:10:01" -- no year, no timezone.
+BSD_TS_RE = re.compile(r"^([A-Z][a-z]{2}) {1,2}(\d{1,2}) (\d{2}):(\d{2}):(\d{2})\b")
+
+
+def _parse_offset(text: str | None) -> timezone | None:
+    if not text:
+        return None
+    if text == "Z":
+        return timezone.utc
+    sign = -1 if text[0] == "-" else 1
+    digits = text[1:].replace(":", "")
+    return timezone(sign * timedelta(hours=int(digits[:2]), minutes=int(digits[2:])))
+
+
+def parse_syslog_time(line: str, now: datetime | None = None) -> datetime | None:
+    """Return the timestamp at the start of a syslog line, or None.
+
+    BSD syslog stamps carry no year or zone, so the year is inferred (a date
+    more than a day in the future must be from last year) and the zone is
+    taken to be the local zone of the machine running the analysis.
+    """
+    m = ISO_TS_RE.match(line)
+    if m:
+        ts = datetime.fromisoformat(m.group(1).replace(" ", "T"))
+        tz = _parse_offset(m.group(2))
+        return ts.replace(tzinfo=tz) if tz else ts.astimezone()
+
+    m = BSD_TS_RE.match(line)
+    if not m or m.group(1) not in _MONTHS:
+        return None
+    now = now or datetime.now()
+    month, day, hh, mm, ss = _MONTHS[m.group(1)], *map(int, m.groups()[1:])
+    try:
+        ts = datetime(now.year, month, day, hh, mm, ss)
+        if ts > now + timedelta(days=1):
+            ts = ts.replace(year=now.year - 1)
+    except ValueError:  # e.g. Feb 29 in a non-leap year
+        return None
+    return ts.astimezone()
+
+
+def parse_access_time(text: str) -> datetime | None:
+    """Parse an access-log time such as '01/Jan/2024:00:00:01 +0000'."""
+    m = re.fullmatch(r"(\d{2})/([A-Z][a-z]{2})/(\d{4}):(\d{2}):(\d{2}):(\d{2}) ([+-]\d{4})", text)
+    if not m or m.group(2) not in _MONTHS:
+        return None
+    day, _, year, hh, mm, ss, offset = m.groups()
+    try:
+        return datetime(
+            int(year),
+            _MONTHS[m.group(2)],
+            int(day),
+            int(hh),
+            int(mm),
+            int(ss),
+            tzinfo=_parse_offset(offset),
+        )
+    except ValueError:
+        return None
+
+
 # --- SSH (OpenSSH sshd via syslog / journald) -------------------------------
 
 SSHD_TAG_RE = re.compile(r"\bsshd(?:-session)?(?:\[\d+\])?:")
@@ -54,6 +129,10 @@ SSH_ACCEPTED_RE = re.compile(r"accepted (?:password|publickey|keyboard-interacti
 
 class SSHParser(BaseParser):
     name = "ssh"
+
+    def __init__(self, now: datetime | None = None) -> None:
+        # Reference point for inferring the year of BSD syslog timestamps.
+        self._now = now or datetime.now()
 
     def parse_line(self, line: str) -> ParsedEvent | None:
         ip = extract_ip(line)
@@ -65,7 +144,9 @@ class SSHParser(BaseParser):
             etype = "accepted"
         else:
             etype = "other"
-        return ParsedEvent(ip=ip, event_type=etype, raw=line)
+        return ParsedEvent(
+            ip=ip, event_type=etype, raw=line, timestamp=parse_syslog_time(line, self._now)
+        )
 
     @classmethod
     def matches(cls, line: str) -> bool:
@@ -104,6 +185,7 @@ class AccessLogParser(BaseParser):
             event_type="failed" if status >= 400 else "accepted",
             raw=line,
             extra={"status": status},
+            timestamp=parse_access_time(m.group("time")),
         )
 
     @classmethod
