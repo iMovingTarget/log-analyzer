@@ -69,7 +69,7 @@ class MySQLStore:
         except ImportError:
             raise RuntimeError(
                 "mysql-connector-python is not installed. "
-                "Install it with: pip install 'log-analyzer[mysql]'"
+                "Install it with: pip install mysql-connector-python"
             ) from None
         self._mysql = mysql.connector
         self.config = {"host": host, "user": user, "password": password, "database": database}

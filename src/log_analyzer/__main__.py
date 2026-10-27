@@ -227,8 +227,8 @@ def _run_watch_mode(args: argparse.Namespace, parser: BaseParser) -> None:
         event = parser.parse_line(line)
         if event and event.event_type == "failed" and tracker.record(event.ip):
             print(
-                f"[RATE ALERT] {event.ip} -- exceeded "
-                f"{args.rate_limit} events in {args.rate_window}s"
+                f"[RATE ALERT] {event.ip} -- {args.rate_limit} failed attempts "
+                f"within {args.rate_window}s"
             )
 
     print(f"[watch] Following {args.file} -- press Ctrl+C to stop")
@@ -256,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         if importlib.util.find_spec("geoip2") is None:
             print(
                 "warning: geoip2 is not installed, countries will show as ??. "
-                "Install it with: pip install 'log-analyzer[geoip]'",
+                "Install it with: pip install geoip2",
                 file=sys.stderr,
             )
 
