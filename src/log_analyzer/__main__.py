@@ -24,8 +24,8 @@ from log_analyzer.parsers import BaseParser
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="log-analyzer",
-        description="Security log analyzer -- parses SSH, Nginx, and Apache logs, "
-        "detects brute-force activity, and generates structured reports.",
+        description="Analyze SSH auth logs and nginx/Apache access logs: find brute-force "
+        "activity per source IP and write console, JSON, CSV, HTML and SIEM (JSONL) output.",
         epilog="""examples:
   log-analyzer --file /var/log/auth.log
   log-analyzer --file access.log --log-format access --fail-threshold 5
@@ -66,9 +66,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     output = p.add_argument_group("output")
-    output.add_argument("--format", choices=["csv", "json", "html", "all"], default="all")
     output.add_argument(
-        "--out", "-o", type=Path, default=Path("reports"), help="Report output file or directory"
+        "--format",
+        choices=["csv", "json", "html", "all"],
+        default="all",
+        help="Which report files to write (default: all)",
+    )
+    output.add_argument(
+        "--out",
+        "-o",
+        type=Path,
+        default=Path("reports"),
+        help="Output directory, or a file path whose extension is replaced per format "
+        "(default: reports/)",
     )
     output.add_argument(
         "--siem-out",
@@ -79,28 +89,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     db = p.add_argument_group("database")
     db.add_argument("--no-db", action="store_true", help="Skip saving to database")
-    db.add_argument("--db", type=Path, default=Path("reports.db"))
-    db.add_argument("--db-type", choices=["sqlite", "mysql"], default="sqlite")
-    db.add_argument("--db-host", default="localhost")
-    db.add_argument("--db-user", default="root")
+    db.add_argument(
+        "--db", type=Path, default=Path("reports.db"), help="SQLite file (default: reports.db)"
+    )
+    db.add_argument(
+        "--db-type", choices=["sqlite", "mysql"], default="sqlite", help="Storage backend"
+    )
+    db.add_argument("--db-host", default="localhost", help="MySQL host")
+    db.add_argument("--db-user", default="root", help="MySQL user")
     db.add_argument(
         "--db-password",
         default=os.environ.get("LOG_ANALYZER_DB_PASSWORD", ""),
         help="MySQL password (default: $LOG_ANALYZER_DB_PASSWORD). Prefer the environment "
         "variable: command-line arguments show up in the process list and shell history",
     )
-    db.add_argument("--db-name", default="log_analyzer")
+    db.add_argument("--db-name", default="log_analyzer", help="MySQL database name")
 
     watch = p.add_argument_group("watch mode")
     watch.add_argument(
-        "--watch", action="store_true", help="Tail the log file and print alerts in real time"
+        "--watch",
+        action="store_true",
+        help="After the report, keep following the file and print rate alerts in real time",
     )
     watch.add_argument("--rate-window", type=int, default=60, help="Rate alert window in seconds")
     watch.add_argument(
         "--rate-limit",
         type=int,
         default=10,
-        help="Max events per IP per window before an alert fires",
+        help="Alert when one IP has this many failed attempts within --rate-window",
     )
 
     filtering = p.add_argument_group("filtering")
