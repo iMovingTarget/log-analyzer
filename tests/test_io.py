@@ -32,3 +32,24 @@ def test_load_ip_list_ignores_comments_and_blanks(tmp_path):
     f.write_text("# trusted\n10.0.0.1\n\n10.0.0.2  # office\n", encoding="utf-8")
 
     assert load_ip_list(f) == {"10.0.0.1", "10.0.0.2"}
+
+
+def test_html_and_csv_mark_blocklisted_ips(tmp_path):
+    import csv
+
+    from log_analyzer.io import write_csv_report
+
+    lines = ["Accepted password for root from 6.6.6.6 port 22"]
+    report, ips, failed, accepted = analyze_lines(
+        lines, top=5, fail_threshold=3, blocklist={"6.6.6.6"}
+    )
+
+    html = render_html_report("auth.log", report, ips, failed, accepted, 3)
+    assert "Successful login from blocklisted IP: 6.6.6.6" in html
+    assert "BLOCKLISTED" in html
+
+    out = tmp_path / "r.csv"
+    write_csv_report(out, ips, failed, accepted, 3, blocklisted={"6.6.6.6"})
+    (row,) = csv.DictReader(out.open(encoding="utf-8"))
+    assert row["blocklisted"] == "YES"
+    assert row["alert"] == "YES"

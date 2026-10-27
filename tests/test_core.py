@@ -74,3 +74,45 @@ def test_min_events_filters_ips():
 def test_extract_ip_invalid_octets():
     assert extract_ip("Connection from 999.0.0.1 port 22") is None
     assert extract_ip("Connection from 203.0.113.7 port 22") == "203.0.113.7"
+
+
+def test_blocklisted_successful_login_is_kept_and_critical():
+    # Regression: blocklisted IPs had every event rewritten to "failed", which
+    # hid the one event that matters most -- a known-bad IP getting in.
+    lines = [
+        "Failed password for root from 6.6.6.6 port 22",
+        "Accepted password for root from 6.6.6.6 port 22",
+    ]
+    report, _, failed, accepted = analyze_lines(
+        lines, top=5, fail_threshold=10, blocklist={"6.6.6.6"}
+    )
+
+    assert failed["6.6.6.6"] == 1
+    assert accepted["6.6.6.6"] == 1
+    assert report.blocklisted == [("6.6.6.6", 2)]
+    assert report.blocklisted_logins == ["6.6.6.6"]
+    assert report.severity == "CRITICAL"
+
+
+def test_blocklisted_ip_is_reported_below_threshold_and_min_events():
+    lines = [
+        "Failed password for root from 6.6.6.6 port 22",
+        "Failed password for root from 1.1.1.1 port 22",
+        "Failed password for root from 1.1.1.1 port 22",
+    ]
+    report, ips, _, _ = analyze_lines(
+        lines, top=5, fail_threshold=10, min_events=2, blocklist={"6.6.6.6"}
+    )
+
+    assert "6.6.6.6" in ips  # survives --min-events
+    assert report.blocklisted == [("6.6.6.6", 1)]
+    assert report.blocklisted_logins == []
+    assert report.severity == "WARNING"
+
+
+def test_allowlisted_ip_is_dropped():
+    lines = ["Failed password for root from 10.0.0.1 port 22"] * 5
+    report, ips, _, _ = analyze_lines(lines, top=5, fail_threshold=1, allowlist={"10.0.0.1"})
+
+    assert not ips
+    assert report.alerts == []

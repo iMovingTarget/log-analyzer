@@ -4,6 +4,7 @@ import csv
 import html
 import json
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ tr.alert { background: #fff3cd; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { text-decoration: underline; }
 .small { color: #666; font-size: 0.9em; }
+.banner { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #f8d7da; color: #58151c; font-weight: 600; }
 """.strip()
 
 
@@ -35,6 +37,7 @@ class Row:
     failed: int
     accepted: int
     alert: bool
+    blocklisted: bool = False
 
 
 def _esc(x: object) -> str:
@@ -110,6 +113,15 @@ def print_console_report(
     else:
         lines += ["", "No alerts 🎉"]
 
+    if report.blocklisted:
+        lines += [
+            "",
+            "BLOCKLISTED IPs seen:",
+            *[f"  {ip:15}  events={n}" for ip, n in report.blocklisted],
+        ]
+    for ip in report.blocklisted_logins:
+        lines += [f"!! Successful login from blocklisted IP {ip}"]
+
     print(f"Severity: {getattr(report.severity, 'value', report.severity)}")
     print("\n".join(lines))
 
@@ -120,16 +132,24 @@ def write_csv_report(
     failed_counter: Counter[str],
     accepted_counter: Counter[str],
     fail_threshold: int,
+    blocklisted: Collection[str] = (),
 ) -> None:
     with csv_out.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["ip", "total", "failed", "accepted", "alert"])
-
-        for ip, total in ip_counter.most_common():
-            failed = failed_counter.get(ip, 0)
-            accepted = accepted_counter.get(ip, 0)
-            alert = "YES" if failed >= fail_threshold else ""
-            w.writerow([ip, total, failed, accepted, alert])
+        w.writerow(["ip", "total", "failed", "accepted", "alert", "blocklisted"])
+        for r in _build_rows(
+            ip_counter, failed_counter, accepted_counter, fail_threshold, blocklisted
+        ):
+            w.writerow(
+                [
+                    r.ip,
+                    r.total,
+                    r.failed,
+                    r.accepted,
+                    "YES" if r.alert else "",
+                    "YES" if r.blocklisted else "",
+                ]
+            )
 
 
 def write_json_report(json_out: Path, report: Report) -> None:
@@ -141,17 +161,29 @@ def _build_rows(
     failed_counter: Counter[str],
     accepted_counter: Counter[str],
     fail_threshold: int,
+    blocklisted: Collection[str] = (),
 ) -> list[Row]:
     rows: list[Row] = []
     for ip, total in ip_counter.most_common():
         failed = failed_counter.get(ip, 0)
-        accepted = accepted_counter.get(ip, 0)
         rows.append(
             Row(
-                ip=ip, total=total, failed=failed, accepted=accepted, alert=failed >= fail_threshold
+                ip=ip,
+                total=total,
+                failed=failed,
+                accepted=accepted_counter.get(ip, 0),
+                alert=failed >= fail_threshold or ip in blocklisted,
+                blocklisted=ip in blocklisted,
             )
         )
     return rows
+
+
+def _render_blocklist_banner(report: Report) -> str:
+    if not report.blocklisted_logins:
+        return ""
+    ips = ", ".join(_esc(ip) for ip in report.blocklisted_logins)
+    return f'\n    <div class="banner">Successful login from blocklisted IP: {ips}</div>'
 
 
 def _render_meta(file_name: str, report: Report, fail_threshold: int) -> str:
@@ -164,7 +196,7 @@ def _render_meta(file_name: str, report: Report, fail_threshold: int) -> str:
     <div><b>Total lines:</b> {report.total_lines}</div>
     <div><b>Accepted:</b> {report.accepted_total} &nbsp; <b>Failed:</b> {report.failed_total}</div>
     <div><b>Fail threshold:</b> {fail_threshold}</div>
-    <div class="{badge_class}">{badge_text}</div>
+    <div class="{badge_class}">{badge_text}</div>{_render_blocklist_banner(report)}
   </div>
 """.strip()
 
@@ -184,7 +216,7 @@ def _render_table(rows: list[Row]) -> str:
 
     body_lines: list[str] = []
     for r in rows:
-        alert_text = "YES" if r.alert else ""
+        alert_text = "BLOCKLISTED" if r.blocklisted else ("YES" if r.alert else "")
         cells = f"{_td(r.ip)}{_td(r.total)}{_td(r.failed)}{_td(r.accepted)}{_td(alert_text)}"
         cls = "alert" if r.alert else ""
         body_lines.append(
@@ -208,7 +240,8 @@ def render_html_report(
     accepted_counter: Counter[str],
     fail_threshold: int,
 ) -> str:
-    rows = _build_rows(ip_counter, failed_counter, accepted_counter, fail_threshold)
+    blocklisted = {ip for ip, _ in report.blocklisted}
+    rows = _build_rows(ip_counter, failed_counter, accepted_counter, fail_threshold, blocklisted)
     meta_html = _render_meta(file_name, report, fail_threshold)
     chart_html = _render_bar_chart(rows)
     table_html = _render_table(rows)

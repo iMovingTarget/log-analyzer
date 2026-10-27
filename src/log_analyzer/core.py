@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
@@ -32,6 +32,14 @@ class Severity(str, Enum):
     CRITICAL = "CRITICAL"
 
 
+_SEVERITY_RANK = {Severity.INFO: 0, Severity.WARNING: 1, Severity.CRITICAL: 2}
+
+
+def worst(*levels: Severity) -> Severity:
+    """Return the most severe of the given levels (INFO if none are given)."""
+    return max(levels, key=_SEVERITY_RANK.__getitem__, default=Severity.INFO)
+
+
 def classify_severity(failed: int, threshold: int) -> Severity:
     if failed >= threshold * 3:
         return Severity.CRITICAL
@@ -49,7 +57,11 @@ class Report:
     accepted_total: int
     failed_by_ip: list[tuple[str, int]]
     alerts: list[tuple[str, int]]
-    severity: str = "INFO"
+    #: Blocklisted IPs seen in the log, with their event counts.
+    blocklisted: list[tuple[str, int]] = field(default_factory=list)
+    #: Blocklisted IPs that logged in successfully: the highest-priority finding.
+    blocklisted_logins: list[str] = field(default_factory=list)
+    severity: Severity = Severity.INFO
 
 
 def analyze_lines(
@@ -63,79 +75,73 @@ def analyze_lines(
     blocklist: Iterable[str] | None = None,
     parser: BaseParser | None = None,
 ) -> tuple[Report, Counter[str], Counter[str], Counter[str]]:
+    """Aggregate a log into per-IP counts, threshold alerts and an overall severity.
+
+    Allowlisted IPs are dropped entirely. Blocklisted IPs are counted like any
+    other IP (a success stays a success) but are always reported, and a
+    successful login from one makes the run CRITICAL.
+    """
     lines = list(lines)
     total_lines = len(lines)
     if parser is None:
         parser = detect_parser(lines)
 
-    all_ips: list[str] = []
-    all_failed: list[str] = []
-    all_accepted: list[str] = []
+    allow_set = set(allowlist or ())
+    block_set = set(blocklist or ())
 
-    allow_set = set(allowlist) if allowlist else None
-    block_set = set(blocklist) if blocklist else None
+    ip_counter: Counter[str] = Counter()
+    failed_counter: Counter[str] = Counter()
+    accepted_counter: Counter[str] = Counter()
+    block_hits: Counter[str] = Counter()
+    blocked_logins: set[str] = set()
 
     for line in lines:
         event = parser.parse_line(line)
-        if event is None:
+        if event is None or event.ip in allow_set:
             continue
         ip = event.ip
-
-        if allow_set and ip in allow_set:
-            continue  # trusted IP — skip entirely
-
-        if block_set and ip in block_set:
-            all_ips.append(ip)
-            all_failed.append(ip)
-            continue
-
-        all_ips.append(ip)
+        ip_counter[ip] += 1
         if event.event_type == "failed":
-            all_failed.append(ip)
+            failed_counter[ip] += 1
         elif event.event_type == "accepted":
-            all_accepted.append(ip)
+            accepted_counter[ip] += 1
+        if ip in block_set:
+            block_hits[ip] += 1
+            if event.event_type == "accepted":
+                blocked_logins.add(ip)
 
-    ip_counter = Counter(all_ips)
-    failed_counter = Counter(all_failed)
-    accepted_counter = Counter(all_accepted)
-
-    failed_total = len(all_failed)
-    accepted_total = len(all_accepted)
+    failed_total = sum(failed_counter.values())
+    accepted_total = sum(accepted_counter.values())
 
     if min_events > 1:
-        allowed = {ip for ip, total in ip_counter.items() if total >= min_events}
-        ip_counter = Counter({ip: count for ip, count in ip_counter.items() if ip in allowed})
-        failed_counter = Counter(
-            {ip: count for ip, count in failed_counter.items() if ip in allowed}
-        )
-        accepted_counter = Counter(
-            {ip: count for ip, count in accepted_counter.items() if ip in allowed}
-        )
+        # Blocklisted IPs are always reported, however few events they have.
+        keep = {ip for ip, total in ip_counter.items() if total >= min_events} | set(block_hits)
+        ip_counter = Counter({ip: n for ip, n in ip_counter.items() if ip in keep})
+        failed_counter = Counter({ip: n for ip, n in failed_counter.items() if ip in keep})
+        accepted_counter = Counter({ip: n for ip, n in accepted_counter.items() if ip in keep})
 
-    top_ips = ip_counter.most_common(top)
-    failed_by_ip = failed_counter.most_common(top)
+    alerts = sorted(
+        ((ip, n) for ip, n in failed_counter.items() if n >= fail_threshold),
+        key=lambda x: x[1],
+        reverse=True,
+    )
 
-    alerts = [(ip, n) for ip, n in failed_counter.items() if n >= fail_threshold]
-    alerts.sort(key=lambda x: x[1], reverse=True)
-
-    overall = Severity.INFO
-    for _, n in alerts:
-        s = classify_severity(n, fail_threshold)
-        if s == Severity.CRITICAL:
-            overall = Severity.CRITICAL
-            break
-        if s == Severity.WARNING:
-            overall = Severity.WARNING
+    severity = worst(
+        *(classify_severity(n, fail_threshold) for _, n in alerts),
+        Severity.WARNING if block_hits else Severity.INFO,
+        Severity.CRITICAL if blocked_logins else Severity.INFO,
+    )
 
     report = Report(
         file=file,
         total_lines=total_lines,
-        top_ips=top_ips,
+        top_ips=ip_counter.most_common(top),
         failed_total=failed_total,
         accepted_total=accepted_total,
-        failed_by_ip=failed_by_ip,
+        failed_by_ip=failed_counter.most_common(top),
         alerts=alerts,
-        severity=overall,
+        blocklisted=block_hits.most_common(),
+        blocklisted_logins=sorted(blocked_logins),
+        severity=severity,
     )
-
     return report, ip_counter, failed_counter, accepted_counter

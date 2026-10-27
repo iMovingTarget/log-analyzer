@@ -102,7 +102,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--blocklist",
         type=Path,
         default=None,
-        help="File of IPs to always flag as failed, one per line",
+        help="File of known-bad IPs, one per line. They are always reported, and a "
+        "successful login from one makes the run CRITICAL",
     )
 
     return p.parse_args(argv)
@@ -133,7 +134,14 @@ def _write_reports(
     fmt = args.format
 
     if fmt in ("all", "csv"):
-        write_csv_report(csv_out, ip_counter, failed_counter, accepted_counter, args.fail_threshold)
+        write_csv_report(
+            csv_out,
+            ip_counter,
+            failed_counter,
+            accepted_counter,
+            args.fail_threshold,
+            blocklisted={ip for ip, _ in report.blocklisted},
+        )
         print(f"Wrote CSV  -> {csv_out}")
 
     if fmt in ("all", "json"):
