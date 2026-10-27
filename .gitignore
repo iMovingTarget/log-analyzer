@@ -1,18 +1,31 @@
+# Python
 __pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
+*.py[cod]
 *.egg-info/
-dist/
 build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local secrets
 .env
+
+# Output of log-analyzer runs
 reports/
 reports.db
 reports.csv
 report.json
-sample.log
+*.jsonl
+
+# Real logs and GeoIP data stay local; only fixtures and examples are committed
 *.log
 !tests/fixtures/*.log
-*.jsonl
+!examples/*.log
 *.mmdb
-test_large.log
+GEOLITE2_COPYRIGHT.txt
