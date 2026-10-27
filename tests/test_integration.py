@@ -2,7 +2,7 @@ from pathlib import Path
 
 from log_analyzer.core import analyze_lines
 from log_analyzer.io import read_lines
-from log_analyzer.parsers import detect_parser, SSHParser
+from log_analyzer.parsers import SSHParser, detect_parser
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -11,8 +11,11 @@ def test_analyze_real_fixture_file():
     lines = read_lines(FIXTURES / "auth_sample.log")
     parser = detect_parser(lines)
 
-    report, ip_counter, failed_counter, accepted_counter = analyze_lines(
-        lines, top=5, fail_threshold=2, parser=parser,
+    report, ip_counter, _failed_counter, _accepted_counter = analyze_lines(
+        lines,
+        top=5,
+        fail_threshold=2,
+        parser=parser,
     )
 
     assert isinstance(parser, SSHParser)

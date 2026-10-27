@@ -1,0 +1,34 @@
+Oct 26 03:12:10 web-01 sshd[41002]: Accepted publickey for sergei from 10.0.0.12 port 51122 ssh2: ED25519 SHA256:q9Jb3Yk0vWm2XU7tL4Rz1cHf8sNpQe6aD5gBhKuVxIo
+Oct 26 03:12:40 web-01 sudo:   sergei : TTY=pts/0 ; PWD=/home/sergei ; USER=root ; COMMAND=/usr/bin/systemctl reload nginx
+Oct 26 03:12:48 web-01 CRON[41210]: pam_unix(cron:session): session opened for user root(uid=0) by (uid=0)
+Oct 26 03:12:54 web-01 sshd[41003]: Failed password for root from 203.0.113.42 port 36168 ssh2
+Oct 26 03:12:56 web-01 sshd[41007]: Failed password for root from 203.0.113.42 port 32457 ssh2
+Oct 26 03:13:00 web-01 sshd[41008]: Failed password for invalid user ubuntu from 203.0.113.42 port 34578 ssh2
+Oct 26 03:13:02 web-01 sshd[41010]: Failed password for invalid user ubuntu from 203.0.113.42 port 33873 ssh2
+Oct 26 03:13:03 web-01 sshd[41012]: Failed password for root from 203.0.113.42 port 55996 ssh2
+Oct 26 03:13:08 web-01 sshd[41016]: Failed password for root from 203.0.113.42 port 38727 ssh2
+Oct 26 03:13:13 web-01 sshd[41018]: Failed password for root from 203.0.113.42 port 37719 ssh2
+Oct 26 03:13:19 web-01 sshd[41019]: Failed password for root from 203.0.113.42 port 42312 ssh2
+Oct 26 03:13:23 web-01 sshd[41023]: Failed password for root from 203.0.113.42 port 33906 ssh2
+Oct 26 03:13:31 web-01 sshd[41027]: Failed password for invalid user ubuntu from 203.0.113.42 port 50587 ssh2
+Oct 26 03:13:35 web-01 sshd[41029]: Failed password for invalid user admin from 203.0.113.42 port 49645 ssh2
+Oct 26 03:13:40 web-01 sshd[41033]: Failed password for root from 203.0.113.42 port 35364 ssh2
+Oct 26 03:13:45 web-01 sshd[41034]: Failed password for invalid user admin from 203.0.113.42 port 59414 ssh2
+Oct 26 03:13:52 web-01 sshd[41036]: Failed password for root from 203.0.113.42 port 63550 ssh2
+Oct 26 03:13:58 web-01 sshd[41038]: Connection closed by authenticating user root 203.0.113.42 port 60212 [preauth]
+Oct 26 03:14:05 web-01 sshd[41039]: Invalid user test from 198.51.100.17 port 62044
+Oct 26 03:14:14 web-01 sshd[41042]: Invalid user oracle from 198.51.100.17 port 35086
+Oct 26 03:14:20 web-01 sshd[41046]: Invalid user git from 198.51.100.17 port 52290
+Oct 26 03:14:22 web-01 sshd[41047]: Invalid user deploy from 198.51.100.17 port 59897
+Oct 26 03:14:27 web-01 sshd[41051]: Failed password for deploy from 198.51.100.17 port 44102 ssh2
+Oct 26 03:14:29 web-01 sshd[41052]: Accepted password for deploy from 198.51.100.17 port 44107 ssh2
+Oct 26 03:14:53 web-01 systemd-logind[612]: New session 4182 of user deploy.
+Oct 26 03:15:01 web-01 sshd[41055]: Failed password for root from 192.0.2.88 port 52011 ssh2
+Oct 26 03:15:08 web-01 sshd[41058]: Failed password for root from 192.0.2.88 port 52013 ssh2
+Oct 26 03:15:09 web-01 sshd[41062]: Disconnected from authenticating user root 192.0.2.88 port 52013 [preauth]
+Oct 26 03:15:15 web-01 sshd[41064]: Failed password for invalid user admin from 203.0.113.99 port 40022 ssh2
+Oct 26 03:15:17 web-01 sshd[41068]: Accepted publickey for sergei from 10.0.0.12 port 51188 ssh2: ED25519 SHA256:q9Jb3Yk0vWm2XU7tL4Rz1cHf8sNpQe6aD5gBhKuVxIo
+Oct 26 03:15:18 web-01 sshd[41070]: Failed password for invalid user postgres from 2001:db8:85a3::8a2e:370:7334 port 50122 ssh2
+Oct 26 03:15:23 web-01 sshd[41072]: Failed password for invalid user postgres from 2001:db8:85a3::8a2e:370:7334 port 50130 ssh2
+Oct 26 03:15:27 web-01 sshd[41076]: Failed password for invalid user postgres from 2001:db8:85a3::8a2e:370:7334 port 50131 ssh2
+Oct 26 03:15:57 web-01 CRON[41388]: pam_unix(cron:session): session closed for user root
