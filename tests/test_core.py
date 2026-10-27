@@ -1,4 +1,5 @@
-from log_analyzer.core import RateTracker, analyze_lines, extract_ip, is_accepted, is_failed
+from log_analyzer.core import RateTracker, analyze_lines
+from log_analyzer.parsers import SSHParser, extract_ip
 
 
 def test_rate_tracker_fires_at_limit():
@@ -24,12 +25,13 @@ def test_extract_ip_none():
 
 
 def test_classification():
-    assert is_failed("Failed password for root from 1.2.3.4") is True
-    assert is_failed("Invalid user admin from 1.2.3.4") is True
-    assert is_failed("Accepted password for bob from 1.2.3.4") is False
+    kind = lambda line: SSHParser().parse_line(line).event_type  # noqa: E731
 
-    assert is_accepted("Accepted password for bob from 1.2.3.4") is True
-    assert is_accepted("Failed password for root from 1.2.3.4") is False
+    assert kind("Failed password for root from 1.2.3.4") == "failed"
+    assert kind("Invalid user admin from 1.2.3.4") == "failed"
+    assert kind("Accepted password for bob from 1.2.3.4") == "accepted"
+    assert kind("Accepted publickey for bob from 1.2.3.4") == "accepted"
+    assert kind("Connection closed by 1.2.3.4 port 22") == "other"
 
 
 def test_analyze_lines_counts_and_alerts():

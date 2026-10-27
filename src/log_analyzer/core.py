@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
-from log_analyzer.parsers import BaseParser, extract_ip
+from log_analyzer.parsers import BaseParser, detect_parser
 
 
 class RateTracker:
@@ -65,6 +65,8 @@ def analyze_lines(
 ) -> tuple[Report, Counter[str], Counter[str], Counter[str]]:
     lines = list(lines)
     total_lines = len(lines)
+    if parser is None:
+        parser = detect_parser(lines)
 
     all_ips: list[str] = []
     all_failed: list[str] = []
@@ -74,9 +76,10 @@ def analyze_lines(
     block_set = set(blocklist) if blocklist else None
 
     for line in lines:
-        ip = extract_ip(line)
-        if not ip:
+        event = parser.parse_line(line)
+        if event is None:
             continue
+        ip = event.ip
 
         if allow_set and ip in allow_set:
             continue  # trusted IP — skip entirely
@@ -87,18 +90,10 @@ def analyze_lines(
             continue
 
         all_ips.append(ip)
-
-        if parser is not None:
-            event = parser.parse_line(line)
-            if event and event.event_type == "failed":
-                all_failed.append(ip)
-            elif event and event.event_type == "accepted":
-                all_accepted.append(ip)
-        else:
-            if is_failed(line):
-                all_failed.append(ip)
-            elif is_accepted(line):
-                all_accepted.append(ip)
+        if event.event_type == "failed":
+            all_failed.append(ip)
+        elif event.event_type == "accepted":
+            all_accepted.append(ip)
 
     ip_counter = Counter(all_ips)
     failed_counter = Counter(all_failed)
@@ -144,12 +139,3 @@ def analyze_lines(
     )
 
     return report, ip_counter, failed_counter, accepted_counter
-
-
-def is_failed(line: str) -> bool:
-    s = line.lower()
-    return "failed password" in s or "invalid user" in s
-
-
-def is_accepted(line: str) -> bool:
-    return "accepted password" in line.lower()

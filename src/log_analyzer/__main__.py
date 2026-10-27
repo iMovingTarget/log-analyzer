@@ -25,7 +25,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "detects brute-force activity, and generates structured reports.",
         epilog="""examples:
   log-analyzer --file /var/log/auth.log
-  log-analyzer --file access.log --log-format nginx --fail-threshold 5
+  log-analyzer --file access.log --log-format access --fail-threshold 5
   log-analyzer --file auth.log --watch --rate-limit 10 --rate-window 60
   log-analyzer --file auth.log --siem-out events.jsonl
   log-analyzer --file auth.log --allowlist trusted_ips.txt --blocklist known_bad.txt
@@ -36,9 +36,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--file", "-f", type=Path, required=True, help="Path to the log file to analyze")
     p.add_argument(
         "--log-format",
-        choices=["auto", "ssh", "nginx", "apache"],
+        choices=["auto", "ssh", "access", "nginx", "apache"],
         default="auto",
-        help="Log format to parse (default: auto-detect)",
+        help="Log format (default: auto-detect). nginx and apache are aliases for access: "
+        "both write the same combined log format",
     )
     p.add_argument("--top", "-t", type=int, default=5, help="How many top IPs to show")
     p.add_argument(
@@ -109,12 +110,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _select_parser(args: argparse.Namespace, lines: list[str]) -> BaseParser:
     """Pick the log parser: explicit --log-format, or auto-detect from the file."""
-    from log_analyzer.parsers import ApacheParser, NginxParser, SSHParser, detect_parser
+    from log_analyzer.parsers import PARSERS, detect_parser
 
-    by_name = {"ssh": SSHParser, "nginx": NginxParser, "apache": ApacheParser}
-    parser = detect_parser(lines) if args.log_format == "auto" else by_name[args.log_format]()
-
-    print(f"Parser: {type(parser).__name__}")
+    if args.log_format == "auto":
+        parser = detect_parser(lines)
+        print(f"Log format: {parser.name} (auto-detected)")
+    else:
+        parser = PARSERS[args.log_format]()
+        print(f"Log format: {parser.name}")
     return parser
 
 
