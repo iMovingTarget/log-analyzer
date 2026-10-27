@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter, deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -10,20 +10,39 @@ from log_analyzer.parsers import BaseParser, detect_parser
 
 
 class RateTracker:
+    """Sliding-window event counter per IP, used for real-time rate alerts.
+
+    Memory is bounded by the number of IPs active within one window: an IP's
+    timestamps are pruned whenever it has a new event, and IPs that have gone
+    quiet are swept out at most once per window (amortised O(1) per event).
+    """
+
     def __init__(self, window_seconds: int = 60, max_events: int = 10):
         self.window = timedelta(seconds=window_seconds)
         self.max_events = max_events
-        self._events: dict[str, list[datetime]] = defaultdict(list)
+        self._events: dict[str, deque[datetime]] = {}
+        self._last_sweep: datetime | None = None
 
-    def record(self, ip: str) -> bool:
-        now = datetime.now(timezone.utc)
+    def record(self, ip: str, now: datetime | None = None) -> bool:
+        """Record one event for ip. Return True if it is at or over the limit."""
+        now = now or datetime.now(timezone.utc)
         cutoff = now - self.window
-        self._events[ip] = [t for t in self._events[ip] if t > cutoff]
-        self._events[ip].append(now)
-        result = len(self._events[ip]) >= self.max_events
-        if not self._events[ip]:  # evict empty buckets
+        bucket = self._events.setdefault(ip, deque())
+        while bucket and bucket[0] <= cutoff:
+            bucket.popleft()
+        bucket.append(now)
+        self._sweep_idle(now, cutoff)
+        return len(bucket) >= self.max_events
+
+    def tracked_ips(self) -> int:
+        return len(self._events)
+
+    def _sweep_idle(self, now: datetime, cutoff: datetime) -> None:
+        if self._last_sweep is not None and now - self._last_sweep < self.window:
+            return
+        self._last_sweep = now
+        for ip in [ip for ip, bucket in self._events.items() if bucket[-1] <= cutoff]:
             del self._events[ip]
-        return result
 
 
 class Severity(str, Enum):

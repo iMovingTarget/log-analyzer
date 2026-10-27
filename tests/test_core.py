@@ -116,3 +116,29 @@ def test_allowlisted_ip_is_dropped():
 
     assert not ips
     assert report.alerts == []
+
+
+def test_rate_tracker_window_expires_old_events():
+    from datetime import datetime, timedelta, timezone
+
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rt = RateTracker(window_seconds=60, max_events=3)
+    rt.record("1.2.3.4", now=t0)
+    rt.record("1.2.3.4", now=t0 + timedelta(seconds=1))
+    # The first two events are outside the 60 s window by now.
+    assert rt.record("1.2.3.4", now=t0 + timedelta(seconds=62)) is False
+
+
+def test_rate_tracker_forgets_idle_ips():
+    # Regression: eviction ran right after an append, so it never fired and
+    # every IP ever seen stayed in memory for the life of --watch.
+    from datetime import datetime, timedelta, timezone
+
+    t0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rt = RateTracker(window_seconds=60, max_events=5)
+    for i in range(1000):
+        rt.record(f"10.0.{i // 256}.{i % 256}", now=t0)
+    assert rt.tracked_ips() == 1000
+
+    rt.record("192.0.2.1", now=t0 + timedelta(seconds=61))
+    assert rt.tracked_ips() == 1
