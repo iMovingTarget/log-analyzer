@@ -1,10 +1,13 @@
 from __future__ import annotations
-from log_analyzer.parsers import BaseParser, extract_ip
-from typing import Iterable
-from datetime import datetime, timedelta, timezone
+
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from enum import Enum
+
+from log_analyzer.parsers import BaseParser, extract_ip
+
 
 class RateTracker:
     def __init__(self, window_seconds: int = 60, max_events: int = 10):
@@ -21,11 +24,13 @@ class RateTracker:
         if not self._events[ip]:  # evict empty buckets
             del self._events[ip]
         return result
-    
+
+
 class Severity(str, Enum):
-    INFO     = "INFO"
-    WARNING  = "WARNING"
+    INFO = "INFO"
+    WARNING = "WARNING"
     CRITICAL = "CRITICAL"
+
 
 def classify_severity(failed: int, threshold: int) -> Severity:
     if failed >= threshold * 3:
@@ -33,6 +38,7 @@ def classify_severity(failed: int, threshold: int) -> Severity:
     if failed >= threshold:
         return Severity.WARNING
     return Severity.INFO
+
 
 @dataclass
 class Report:
@@ -43,7 +49,7 @@ class Report:
     accepted_total: int
     failed_by_ip: list[tuple[str, int]]
     alerts: list[tuple[str, int]]
-    severity: str = "INFO" 
+    severity: str = "INFO"
 
 
 def analyze_lines(
@@ -59,7 +65,7 @@ def analyze_lines(
 ) -> tuple[Report, Counter[str], Counter[str], Counter[str]]:
     lines = list(lines)
     total_lines = len(lines)
-    
+
     all_ips: list[str] = []
     all_failed: list[str] = []
     all_accepted: list[str] = []
@@ -94,19 +100,22 @@ def analyze_lines(
             elif is_accepted(line):
                 all_accepted.append(ip)
 
-
     ip_counter = Counter(all_ips)
     failed_counter = Counter(all_failed)
     accepted_counter = Counter(all_accepted)
-    
+
     failed_total = len(all_failed)
     accepted_total = len(all_accepted)
 
     if min_events > 1:
         allowed = {ip for ip, total in ip_counter.items() if total >= min_events}
         ip_counter = Counter({ip: count for ip, count in ip_counter.items() if ip in allowed})
-        failed_counter = Counter({ip: count for ip, count in failed_counter.items() if ip in allowed})
-        accepted_counter = Counter({ip: count for ip, count in accepted_counter.items() if ip in allowed})        
+        failed_counter = Counter(
+            {ip: count for ip, count in failed_counter.items() if ip in allowed}
+        )
+        accepted_counter = Counter(
+            {ip: count for ip, count in accepted_counter.items() if ip in allowed}
+        )
 
     top_ips = ip_counter.most_common(top)
     failed_by_ip = failed_counter.most_common(top)

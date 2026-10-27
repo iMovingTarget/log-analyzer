@@ -5,24 +5,24 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from log_analyzer.core import analyze_lines, Report
-from log_analyzer.parsers import BaseParser
+from log_analyzer.core import Report, analyze_lines
 from log_analyzer.io import (
-    read_lines,
-    resolve_output_paths,
+    load_ip_list,
     print_console_report,
+    read_lines,
+    render_html_report,
+    resolve_output_paths,
     write_csv_report,
     write_json_report,
-    render_html_report,
-    load_ip_list,
 )
+from log_analyzer.parsers import BaseParser
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="log-analyzer",
         description="Security log analyzer -- parses SSH, Nginx, and Apache logs, "
-                     "detects brute-force activity, and generates structured reports.",
+        "detects brute-force activity, and generates structured reports.",
         epilog="""examples:
   log-analyzer --file /var/log/auth.log
   log-analyzer --file access.log --log-format nginx --fail-threshold 5
@@ -33,25 +33,44 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    p.add_argument("--file", "-f", type=Path, required=True,
-        help="Path to the log file to analyze")
-    p.add_argument("--log-format", choices=["auto", "ssh", "nginx", "apache"], default="auto",
-        help="Log format to parse (default: auto-detect)")
-    p.add_argument("--top", "-t", type=int, default=5,
-        help="How many top IPs to show")
-    p.add_argument("--fail-threshold", type=int, default=3,
-        help="Alert when an IP's failed count reaches this value")
-    p.add_argument("--min-events", type=int, default=1,
-        help="Ignore IPs with fewer than this many total events")
-    p.add_argument("--geoip-db", type=Path, default=None,
-        help="Path to GeoLite2-Country.mmdb for country lookup")
+    p.add_argument("--file", "-f", type=Path, required=True, help="Path to the log file to analyze")
+    p.add_argument(
+        "--log-format",
+        choices=["auto", "ssh", "nginx", "apache"],
+        default="auto",
+        help="Log format to parse (default: auto-detect)",
+    )
+    p.add_argument("--top", "-t", type=int, default=5, help="How many top IPs to show")
+    p.add_argument(
+        "--fail-threshold",
+        type=int,
+        default=3,
+        help="Alert when an IP's failed count reaches this value",
+    )
+    p.add_argument(
+        "--min-events",
+        type=int,
+        default=1,
+        help="Ignore IPs with fewer than this many total events",
+    )
+    p.add_argument(
+        "--geoip-db",
+        type=Path,
+        default=None,
+        help="Path to GeoLite2-Country.mmdb for country lookup",
+    )
 
     output = p.add_argument_group("output")
     output.add_argument("--format", choices=["csv", "json", "html", "all"], default="all")
-    output.add_argument("--out", "-o", type=Path, default=Path("reports"),
-        help="Report output file or directory")
-    output.add_argument("--siem-out", type=Path, default=None,
-        help="Write SIEM-format JSONL events to this path (one event per line)")
+    output.add_argument(
+        "--out", "-o", type=Path, default=Path("reports"), help="Report output file or directory"
+    )
+    output.add_argument(
+        "--siem-out",
+        type=Path,
+        default=None,
+        help="Write SIEM-format JSONL events to this path (one event per line)",
+    )
 
     db = p.add_argument_group("database")
     db.add_argument("--no-db", action="store_true", help="Skip saving to database")
@@ -63,25 +82,34 @@ def parse_args() -> argparse.Namespace:
     db.add_argument("--db-name", default="log_analyzer")
 
     watch = p.add_argument_group("watch mode")
-    watch.add_argument("--watch", action="store_true",
-        help="Tail the log file and print alerts in real time")
-    watch.add_argument("--rate-window", type=int, default=60,
-        help="Rate alert window in seconds")
-    watch.add_argument("--rate-limit", type=int, default=10,
-        help="Max events per IP per window before an alert fires")
+    watch.add_argument(
+        "--watch", action="store_true", help="Tail the log file and print alerts in real time"
+    )
+    watch.add_argument("--rate-window", type=int, default=60, help="Rate alert window in seconds")
+    watch.add_argument(
+        "--rate-limit",
+        type=int,
+        default=10,
+        help="Max events per IP per window before an alert fires",
+    )
 
     filtering = p.add_argument_group("filtering")
-    filtering.add_argument("--allowlist", type=Path, default=None,
-        help="File of IPs to skip entirely, one per line")
-    filtering.add_argument("--blocklist", type=Path, default=None,
-        help="File of IPs to always flag as failed, one per line")
+    filtering.add_argument(
+        "--allowlist", type=Path, default=None, help="File of IPs to skip entirely, one per line"
+    )
+    filtering.add_argument(
+        "--blocklist",
+        type=Path,
+        default=None,
+        help="File of IPs to always flag as failed, one per line",
+    )
 
     return p.parse_args()
 
 
 def _select_parser(args: argparse.Namespace, lines: list[str]) -> BaseParser:
     """Pick the log parser: explicit --log-format, or auto-detect from the file."""
-    from log_analyzer.parsers import detect_parser, SSHParser, NginxParser, ApacheParser
+    from log_analyzer.parsers import ApacheParser, NginxParser, SSHParser, detect_parser
 
     by_name = {"ssh": SSHParser, "nginx": NginxParser, "apache": ApacheParser}
     parser = detect_parser(lines) if args.log_format == "auto" else by_name[args.log_format]()
@@ -111,8 +139,11 @@ def _write_reports(
 
     if fmt in ("all", "html"):
         html_doc = render_html_report(
-            args.file.name, report,
-            ip_counter, failed_counter, accepted_counter,
+            args.file.name,
+            report,
+            ip_counter,
+            failed_counter,
+            accepted_counter,
             args.fail_threshold,
         )
         html_out.write_text(html_doc, encoding="utf-8")
@@ -134,7 +165,7 @@ def _persist_to_storage(args: argparse.Namespace, report: Report) -> None:
     """Save the report to SQLite or MySQL, unless --no-db was given."""
     if args.no_db:
         return
-    from log_analyzer.storage import SQLiteStore, MySQLStore
+    from log_analyzer.storage import MySQLStore, SQLiteStore
 
     if args.db_type == "mysql":
         store = MySQLStore(args.db_host, args.db_user, args.db_password, args.db_name)
@@ -149,8 +180,8 @@ def _run_watch_mode(args: argparse.Namespace, parser: BaseParser) -> None:
     """Tail the log file and print real-time rate-limit alerts. Never returns."""
     if not args.watch:
         return
-    from log_analyzer.watch import tail_file
     from log_analyzer.core import RateTracker
+    from log_analyzer.watch import tail_file
 
     tracker = RateTracker(window_seconds=args.rate_window, max_events=args.rate_limit)
 
@@ -158,8 +189,10 @@ def _run_watch_mode(args: argparse.Namespace, parser: BaseParser) -> None:
         event = parser.parse_line(line)
         if event and event.event_type == "failed":
             if tracker.record(event.ip):
-                print(f"[RATE ALERT] {event.ip} -- exceeded "
-                      f"{args.rate_limit} events in {args.rate_window}s")
+                print(
+                    f"[RATE ALERT] {event.ip} -- exceeded "
+                    f"{args.rate_limit} events in {args.rate_window}s"
+                )
 
     tail_file(args.file, on_line)
 
@@ -191,7 +224,7 @@ def main() -> int:
     print_console_report(report, args.top, args.fail_threshold, geoip_db=args.geoip_db)
     _write_reports(args, report, ip_counter, failed_counter, accepted_counter)
     _write_siem_events(args, lines, parser)
-    _persist_to_storage(args, report)   # must run before watch -- tail_file() never returns
+    _persist_to_storage(args, report)  # must run before watch -- tail_file() never returns
     _run_watch_mode(args, parser)
 
     return 0

@@ -4,11 +4,11 @@ import csv
 import html
 import json
 from collections import Counter
-from pathlib import Path
 from dataclasses import asdict, dataclass
-from log_analyzer.core import Report
+from pathlib import Path
 from typing import Any
 
+from log_analyzer.core import Report
 
 HTML_STYLE = """
 body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
@@ -62,20 +62,22 @@ def resolve_output_paths(out: Path, file_stem: str) -> tuple[Path, Path, Path]:
         )
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    return (    
+    return (
         out.with_suffix(".json"),
         out.with_suffix(".csv"),
         out.with_suffix(".html"),
     )
 
-def print_console_report(report: Report, top: int, fail_threshold: int, geoip_db: Path | None = None) -> None:
+
+def print_console_report(
+    report: Report, top: int, fail_threshold: int, geoip_db: Path | None = None
+) -> None:
     file_name = Path(report.file).name if report.file else ""
 
     top_ips_formatted = [
-        f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]"
-        for ip, n in report.top_ips
+        f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]" for ip, n in report.top_ips
     ]
-    
+
     failed_by_ip_formatted = [
         f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]"
         for ip, n in report.failed_by_ip
@@ -141,7 +143,11 @@ def _build_rows(
     for ip, total in ip_counter.most_common():
         failed = failed_counter.get(ip, 0)
         accepted = accepted_counter.get(ip, 0)
-        rows.append(Row(ip=ip, total=total, failed=failed, accepted=accepted, alert=failed >= fail_threshold))
+        rows.append(
+            Row(
+                ip=ip, total=total, failed=failed, accepted=accepted, alert=failed >= fail_threshold
+            )
+        )
     return rows
 
 
@@ -315,18 +321,21 @@ def load_ip_list(path: Path | None) -> set[str]:
 
 _geoip_reader_cache: dict[str, Any] = {}
 
+
 def lookup_country(ip: str, db_path: Path | None) -> str | None:
     if db_path is None or not db_path.exists():
         return None
     key = str(db_path)
     try:
         import geoip2.database
+
         if key not in _geoip_reader_cache:
             _geoip_reader_cache[key] = geoip2.database.Reader(key)
         return _geoip_reader_cache[key].country(ip).country.iso_code
     except Exception:
         return None
-    
+
+
 def _render_bar_chart(rows: list[Row], max_bars: int = 10) -> str:
     top = sorted(rows, key=lambda r: r.failed, reverse=True)[:max_bars]
     top = [r for r in top if r.failed > 0]
@@ -356,9 +365,7 @@ def _render_bar_chart(rows: list[Row], max_bars: int = 10) -> str:
         )
 
     return (
-        '<h2>Top failed IPs</h2>\n'
+        "<h2>Top failed IPs</h2>\n"
         f'<svg width="{svg_width}" height="{chart_height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img">\n'
-        + "\n".join(bars)
-        + '\n</svg>'
+        f'xmlns="http://www.w3.org/2000/svg" role="img">\n' + "\n".join(bars) + "\n</svg>"
     )

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from log_analyzer.core import classify_severity, Severity
+from log_analyzer.core import Severity, classify_severity
 from log_analyzer.parsers import BaseParser
 
 
@@ -39,14 +39,16 @@ def build_siem_events(
         else:
             severity = Severity.INFO
 
-        events.append(SIEMEvent(
-            timestamp=ingest_time,
-            source_ip=parsed.ip,
-            event_type=parsed.event_type,
-            severity=severity.value if hasattr(severity, "value") else str(severity),
-            log_file=log_file,
-            raw_log=line.strip(),
-        ))
+        events.append(
+            SIEMEvent(
+                timestamp=ingest_time,
+                source_ip=parsed.ip,
+                event_type=parsed.event_type,
+                severity=severity.value if hasattr(severity, "value") else str(severity),
+                log_file=log_file,
+                raw_log=line.strip(),
+            )
+        )
 
     return events
 

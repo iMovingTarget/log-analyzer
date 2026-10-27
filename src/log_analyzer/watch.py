@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 
 def tail_file(
@@ -15,7 +15,7 @@ def tail_file(
 
     while True:
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, encoding="utf-8", errors="replace") as f:
                 f.seek(pos)
                 chunk = f.read()
                 if chunk:
@@ -23,6 +23,6 @@ def tail_file(
                         if line.strip():
                             callback(line)
                 pos = f.tell()
-        except (OSError, IOError):
+        except OSError:
             pass
         time.sleep(poll_interval)

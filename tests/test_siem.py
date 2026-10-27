@@ -1,5 +1,5 @@
-from log_analyzer.siem import build_siem_events, SIEMEvent
 from log_analyzer.parsers import SSHParser
+from log_analyzer.siem import build_siem_events
 
 
 def test_build_siem_events_basic():

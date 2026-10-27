@@ -10,5 +10,5 @@ def test_html_report_contains_real_chart():
     ]
     report, ips, failed, accepted = analyze_lines(lines, top=5, fail_threshold=2)
     html = render_html_report("auth.log", report, ips, failed, accepted, 2)
-    assert "<svg" in html            # the chart exists at all
+    assert "<svg" in html  # the chart exists at all
     assert html.count("<rect") == 2  # one bar per attacking IP

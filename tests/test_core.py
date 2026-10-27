@@ -1,6 +1,4 @@
-from log_analyzer.core import extract_ip, is_failed, is_accepted, analyze_lines
-from log_analyzer.core import RateTracker
-
+from log_analyzer.core import RateTracker, analyze_lines, extract_ip, is_accepted, is_failed
 
 
 def test_rate_tracker_fires_at_limit():
@@ -63,12 +61,13 @@ def test_min_events_filters_ips():
         "Failed password for invalid user root from 2.2.2.2 port 22",
         "Accepted password for user ok from 2.2.2.2 port 22",
     ]
-    report, ip_counter, failed_counter, accepted_counter = analyze_lines(
+    _report, ip_counter, _failed_counter, _accepted_counter = analyze_lines(
         lines, top=5, fail_threshold=1, min_events=2
     )
 
     assert "1.1.1.1" not in ip_counter
     assert ip_counter["2.2.2.2"] == 2
+
 
 def test_extract_ip_invalid_octets():
     assert extract_ip("Connection from 999.0.0.1 port 22") is None
