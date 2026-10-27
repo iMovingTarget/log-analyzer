@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from log_analyzer.core import Report
+from log_analyzer.core import Report, Severity
 
 HTML_STYLE = """
 body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
@@ -20,13 +20,23 @@ th { background: #f5f5f5; }
 tr.alert { background: #fff3cd; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; }
 .badge.alert { background: #ffecb5; }
-.controls { display: flex; gap: 12px; align-items: center; margin: 12px 0 16px; flex-wrap: wrap; }
-.controls input[type="search"] { padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; min-width: 260px; }
+.controls {
+  display: flex; gap: 12px; align-items: center; margin: 12px 0 16px; flex-wrap: wrap;
+}
+.controls input[type="search"] {
+  padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; min-width: 260px;
+}
 .controls label { display: inline-flex; gap: 8px; align-items: center; }
 th.sortable { cursor: pointer; user-select: none; }
 th.sortable:hover { text-decoration: underline; }
 .small { color: #666; font-size: 0.9em; }
-.banner { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #f8d7da; color: #58151c; font-weight: 600; }
+.sev { font-weight: 700; }
+.sev-warning { color: #8a5a00; }
+.sev-critical { color: #b02a37; }
+.banner {
+  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
+  background: #f8d7da; color: #58151c; font-weight: 600;
+}
 """.strip()
 
 
@@ -78,51 +88,44 @@ def resolve_output_paths(out: Path, file_stem: str) -> tuple[Path, Path, Path]:
 def print_console_report(
     report: Report, top: int, fail_threshold: int, geoip_db: Path | None = None
 ) -> None:
-    file_name = Path(report.file).name if report.file else ""
+    """Print a plain-ASCII summary (safe on any console encoding, and when redirected)."""
+    shown = [ip for ip, _ in (*report.top_ips, *report.failed_by_ip, *report.blocklisted)]
+    width = max([15, *map(len, shown)])
 
-    top_ips_formatted = [
-        f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]" for ip, n in report.top_ips
-    ]
+    def row(ip: str, detail: str) -> str:
+        country = f"  [{lookup_country(ip, geoip_db) or '??'}]" if geoip_db else ""
+        return f"  {ip:<{width}}  {detail}{country}"
 
-    failed_by_ip_formatted = [
-        f"  {ip:15}  {n:5}  [{lookup_country(ip, geoip_db) or '??'}]"
-        for ip, n in report.failed_by_ip
-    ]
-
-    lines: list[str] = [
-        f"\nFile: {file_name}",
-        f"Total lines: {report.total_lines}",
-        f"Accepted: {report.accepted_total} | Failed: {report.failed_total}",
+    name = Path(report.file).name if report.file else "(stdin)"
+    lines = [
+        f"\nlog-analyzer report: {name}",
+        f"Severity: {Severity(report.severity).value}",
+        f"Lines: {report.total_lines} | Accepted: {report.accepted_total}"
+        f" | Failed: {report.failed_total}",
         "",
-        f"Top {top} IPs:",
-        *top_ips_formatted,
+        f"Top {top} IPs by events:",
+        *(row(ip, f"{n:>6}") for ip, n in report.top_ips),
         "",
-        f"Top {top} FAILED by IP:",
-        *failed_by_ip_formatted,
+        f"Top {top} IPs by failures:",
+        *(row(ip, f"{n:>6}") for ip, n in report.failed_by_ip),
+        "",
     ]
-
     if report.alerts:
         lines += [
-            "",
-            "ALERTS (failed >= threshold):",
-            *[
-                f"  {ip:15}  failed={n:<5} (threshold={fail_threshold})  [{lookup_country(ip, geoip_db) or '??'}]"
-                for ip, n in report.alerts
-            ],
+            f"ALERTS (failed >= {fail_threshold}):",
+            *(row(ip, f"failed={n}") for ip, n in report.alerts),
         ]
     else:
-        lines += ["", "No alerts 🎉"]
+        lines += [f"No IP reached the failure threshold ({fail_threshold})."]
 
     if report.blocklisted:
         lines += [
             "",
             "BLOCKLISTED IPs seen:",
-            *[f"  {ip:15}  events={n}" for ip, n in report.blocklisted],
+            *(row(ip, f"events={n}") for ip, n in report.blocklisted),
         ]
-    for ip in report.blocklisted_logins:
-        lines += [f"!! Successful login from blocklisted IP {ip}"]
+    lines += [f"!! Successful login from blocklisted IP {ip}" for ip in report.blocklisted_logins]
 
-    print(f"Severity: {getattr(report.severity, 'value', report.severity)}")
     print("\n".join(lines))
 
 
@@ -187,12 +190,14 @@ def _render_blocklist_banner(report: Report) -> str:
 
 
 def _render_meta(file_name: str, report: Report, fail_threshold: int) -> str:
+    severity = Severity(report.severity).value
     badge_class = "badge alert" if report.alerts else "badge"
     badge_text = "ALERTS present" if report.alerts else "No alerts"
 
     return f"""
   <div class="meta">
     <div><b>File:</b> {_esc(file_name)}</div>
+    <div><b>Severity:</b> <span class="sev sev-{severity.lower()}">{severity}</span></div>
     <div><b>Total lines:</b> {report.total_lines}</div>
     <div><b>Accepted:</b> {report.accepted_total} &nbsp; <b>Failed:</b> {report.failed_total}</div>
     <div><b>Fail threshold:</b> {fail_threshold}</div>
@@ -205,11 +210,13 @@ def _render_table(rows: list[Row]) -> str:
     header = """
   <table>
     <thead>
+      <tr>
         <th class="sortable" data-key="ip" data-type="text">IP</th>
         <th class="sortable" data-key="total" data-type="num">Total</th>
         <th class="sortable" data-key="failed" data-type="num">Failed</th>
         <th class="sortable" data-key="accepted" data-type="num">Accepted</th>
         <th class="sortable" data-key="alert" data-type="text">Alert</th>
+      </tr>
     </thead>
     <tbody>
 """.rstrip()
@@ -220,8 +227,8 @@ def _render_table(rows: list[Row]) -> str:
         cells = f"{_td(r.ip)}{_td(r.total)}{_td(r.failed)}{_td(r.accepted)}{_td(alert_text)}"
         cls = "alert" if r.alert else ""
         body_lines.append(
-            f"<tr class='{cls}' data-ip='{_esc(r.ip)}' data-total='{r.total}' data-failed='{r.failed}' "
-            f"data-accepted='{r.accepted}' data-alert='{alert_text}'>"
+            f"<tr class='{cls}' data-ip='{_esc(r.ip)}' data-total='{r.total}' "
+            f"data-failed='{r.failed}' data-accepted='{r.accepted}' data-alert='{alert_text}'>"
             f"{cells}</tr>"
         )
     footer = """
@@ -373,11 +380,14 @@ def lookup_country(ip: str, db_path: Path | None) -> str | None:
     key = str(db_path)
     try:
         import geoip2.database
-
+        import geoip2.errors
+    except ImportError:
+        return None
+    try:
         if key not in _geoip_reader_cache:
             _geoip_reader_cache[key] = geoip2.database.Reader(key)
         return _geoip_reader_cache[key].country(ip).country.iso_code
-    except Exception:
+    except (geoip2.errors.AddressNotFoundError, ValueError, OSError):
         return None
 
 

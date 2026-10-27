@@ -1,7 +1,10 @@
+"""Run history storage: SQLite by default, MySQL/MariaDB optionally."""
+
 from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,11 +13,16 @@ from log_analyzer.core import Report
 
 class SQLiteStore:
     def __init__(self, db_path: Path = Path("reports.db")):
-        self.db_path = db_path
+        self.db_path = Path(db_path)
         self._init()
 
+    def _connect(self) -> closing[sqlite3.Connection]:
+        # sqlite3's own context manager only commits; closing() also releases
+        # the file, which matters on Windows where an open handle locks it.
+        return closing(sqlite3.connect(self.db_path))
+
     def _init(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn, conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS runs (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,10 +36,9 @@ class SQLiteStore:
             """)
 
     def save(self, report: Report) -> int:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn, conn:
             cur = conn.execute(
-                """INSERT INTO runs
-                   (file, run_at, total_lines, failed, accepted, alerts)
+                """INSERT INTO runs (file, run_at, total_lines, failed, accepted, alerts)
                    VALUES (?, ?, ?, ?, ?, ?)""",
                 (
                     report.file,
@@ -42,54 +49,52 @@ class SQLiteStore:
                     json.dumps(report.alerts),
                 ),
             )
-            return cur.lastrowid  # type: ignore
+            return int(cur.lastrowid or 0)
 
     def history(self, limit: int = 10) -> list[dict]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
-                "SELECT * FROM runs ORDER BY run_at DESC LIMIT ?", (limit,)
+                "SELECT * FROM runs ORDER BY run_at DESC, id DESC LIMIT ?", (limit,)
             ).fetchall()
-            return [dict(r) for r in rows]
+        return [dict(r) for r in rows]
 
 
 class MySQLStore:
-    """MySQL/MariaDB backend — same interface as SQLiteStore."""
+    """MySQL/MariaDB backend with the same interface as SQLiteStore."""
 
     def __init__(self, host: str, user: str, password: str, database: str):
         try:
             import mysql.connector
-
-            self._mysql = mysql.connector
         except ImportError:
             raise RuntimeError(
-                "mysql-connector-python not installed.\nRun: pip install mysql-connector-python"
-            )
-        self.config = dict(host=host, user=user, password=password, database=database)
+                "mysql-connector-python is not installed. "
+                "Install it with: pip install 'log-analyzer[mysql]'"
+            ) from None
+        self._mysql = mysql.connector
+        self.config = {"host": host, "user": user, "password": password, "database": database}
         self._init()
 
     def _init(self) -> None:
-        with self._mysql.connect(**self.config) as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    CREATE TABLE IF NOT EXISTS runs (
-                        id          INT AUTO_INCREMENT PRIMARY KEY,
-                        file        VARCHAR(500),
-                        run_at      DATETIME,
-                        total_lines INT,
-                        failed      INT,
-                        accepted    INT,
-                        alerts      JSON
-                    )
-                """)
+        with self._mysql.connect(**self.config) as conn, conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS runs (
+                    id          INT AUTO_INCREMENT PRIMARY KEY,
+                    file        VARCHAR(500),
+                    run_at      DATETIME,
+                    total_lines INT,
+                    failed      INT,
+                    accepted    INT,
+                    alerts      JSON
+                )
+            """)
             conn.commit()
 
     def save(self, report: Report) -> int:
         with self._mysql.connect(**self.config) as conn, conn.cursor() as cur:
             cur.execute(
-                """INSERT INTO runs
-                       (file, run_at, total_lines, failed, accepted, alerts)
-                       VALUES (%s, NOW(), %s, %s, %s, %s)""",
+                """INSERT INTO runs (file, run_at, total_lines, failed, accepted, alerts)
+                   VALUES (%s, UTC_TIMESTAMP(), %s, %s, %s, %s)""",
                 (
                     report.file,
                     report.total_lines,
@@ -99,10 +104,9 @@ class MySQLStore:
                 ),
             )
             conn.commit()
-            return cur.lastrowid  # type: ignore
+            return int(cur.lastrowid or 0)
 
     def history(self, limit: int = 10) -> list[dict]:
-        with self._mysql.connect(**self.config) as conn:
-            with conn.cursor(dictionary=True) as cur:
-                cur.execute("SELECT * FROM runs ORDER BY run_at DESC LIMIT %s", (limit,))
-                return cur.fetchall()
+        with self._mysql.connect(**self.config) as conn, conn.cursor(dictionary=True) as cur:
+            cur.execute("SELECT * FROM runs ORDER BY run_at DESC, id DESC LIMIT %s", (limit,))
+            return cur.fetchall()

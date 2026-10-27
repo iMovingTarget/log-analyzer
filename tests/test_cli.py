@@ -40,3 +40,28 @@ def test_invalid_utf8_does_not_crash(tmp_path):
     rc = main(["--file", str(log), "--out", str(tmp_path / "out"), "--no-db"])
 
     assert rc == 0
+
+
+def test_version_flag(capsys):
+    import pytest
+
+    from log_analyzer import __version__
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--version"])
+    assert exit_info.value.code == 0
+    assert __version__ in capsys.readouterr().out
+
+
+def test_console_output_is_ascii(tmp_path, capsys):
+    # Non-ASCII output (it used to print an emoji) crashes on Windows when
+    # stdout is redirected to a file with a legacy code page.
+    main(["--file", str(FIXTURE), "--out", str(tmp_path), "--no-db"])
+    assert capsys.readouterr().out.isascii()
+
+
+def test_missing_geoip_db_exits_2(tmp_path, capsys):
+    rc = main(["--file", str(FIXTURE), "--geoip-db", str(tmp_path / "nope.mmdb"), "--no-db"])
+
+    assert rc == 2
+    assert "GeoIP database not found" in capsys.readouterr().err

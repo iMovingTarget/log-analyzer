@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import sys
 from collections import Counter
 from pathlib import Path
 
+from log_analyzer import __version__
 from log_analyzer.core import Report, analyze_lines
 from log_analyzer.io import (
     load_ip_list,
@@ -33,6 +36,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     p.add_argument("--file", "-f", type=Path, required=True, help="Path to the log file to analyze")
     p.add_argument(
         "--log-format",
@@ -79,7 +83,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     db.add_argument("--db-type", choices=["sqlite", "mysql"], default="sqlite")
     db.add_argument("--db-host", default="localhost")
     db.add_argument("--db-user", default="root")
-    db.add_argument("--db-password", default="")
+    db.add_argument(
+        "--db-password",
+        default=os.environ.get("LOG_ANALYZER_DB_PASSWORD", ""),
+        help="MySQL password (default: $LOG_ANALYZER_DB_PASSWORD). Prefer the environment "
+        "variable: command-line arguments show up in the process list and shell history",
+    )
     db.add_argument("--db-name", default="log_analyzer")
 
     watch = p.add_argument_group("watch mode")
@@ -223,6 +232,17 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as e:
         print(f"error: cannot read {e.filename or args.file}: {e.strerror or e}", file=sys.stderr)
         return 2
+
+    if args.geoip_db:
+        if not args.geoip_db.is_file():
+            print(f"error: GeoIP database not found: {args.geoip_db}", file=sys.stderr)
+            return 2
+        if importlib.util.find_spec("geoip2") is None:
+            print(
+                "warning: geoip2 is not installed, countries will show as ??. "
+                "Install it with: pip install 'log-analyzer[geoip]'",
+                file=sys.stderr,
+            )
 
     parser = _select_parser(args, lines)
 

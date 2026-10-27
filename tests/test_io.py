@@ -53,3 +53,15 @@ def test_html_and_csv_mark_blocklisted_ips(tmp_path):
     (row,) = csv.DictReader(out.open(encoding="utf-8"))
     assert row["blocklisted"] == "YES"
     assert row["alert"] == "YES"
+
+
+def test_html_table_header_is_valid_markup():
+    import re
+
+    report, ips, failed, accepted = analyze_lines(
+        ["Failed password for root from 203.0.113.7 port 22"], top=5, fail_threshold=1
+    )
+    html = render_html_report("auth.log", report, ips, failed, accepted, 1)
+
+    assert re.search(r"<thead>\s*<tr>", html)  # th must sit inside a tr
+    assert "Severity:" in html
