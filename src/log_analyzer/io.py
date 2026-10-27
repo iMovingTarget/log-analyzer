@@ -6,37 +6,93 @@ import json
 from collections import Counter
 from collections.abc import Collection
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from log_analyzer import __version__
 from log_analyzer.core import Report, Severity
 
 HTML_STYLE = """
-body { font-family: system-ui, Arial, sans-serif; margin: 24px; }
-.meta { margin-bottom: 16px; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-th { background: #f5f5f5; }
-tr.alert { background: #fff3cd; }
-.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eee; }
-.badge.alert { background: #ffecb5; }
-.controls {
-  display: flex; gap: 12px; align-items: center; margin: 12px 0 16px; flex-wrap: wrap;
+:root {
+  --bg: #f6f7f9; --card: #fff; --text: #1f2328; --muted: #656d76; --border: #e4e7eb;
+  --red: #b4233a; --red-bg: #fdecef; --red-line: #f3c3cb;
+  --amber: #8a5a00; --amber-bg: #fff4d6; --amber-line: #f2dca0;
 }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 40px; }
+header {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.eyebrow { color: var(--muted); font-size: 13px; }
+h1 { margin: 2px 0 0; font-size: 26px; line-height: 1.2; word-break: break-all; }
+h2 { margin: 0 0 14px; font-size: 16px; }
+.sev {
+  display: inline-block; padding: 5px 14px; border-radius: 999px;
+  font-weight: 700; font-size: 13px; border: 1px solid var(--border);
+}
+.sev-info { background: #eef1f4; color: var(--muted); }
+.sev-warning {
+  background: var(--amber-bg); color: var(--amber); border-color: var(--amber-line);
+}
+.sev-critical {
+  background: var(--red-bg); color: var(--red); border-color: var(--red-line);
+}
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;
+}
+.stat {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px;
+}
+.stat .label {
+  color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+}
+.stat .value { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.banner { margin-top: 16px; padding: 12px 16px; border-radius: 10px; font-weight: 600; }
+.banner-critical {
+  background: var(--red-bg); color: var(--red); border: 1px solid var(--red-line);
+}
+.banner-warning {
+  background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-line);
+}
+.card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px; margin-top: 16px;
+}
+.chart svg { display: block; max-width: 100%; height: auto; }
+.controls { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
 .controls input[type="search"] {
-  padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; min-width: 260px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+  min-width: 260px; font: inherit;
 }
 .controls label { display: inline-flex; gap: 8px; align-items: center; }
-th.sortable { cursor: pointer; user-select: none; }
-th.sortable:hover { text-decoration: underline; }
-.small { color: #666; font-size: 0.9em; }
-.sev { font-weight: 700; }
-.sev-warning { color: #8a5a00; }
-.sev-critical { color: #b02a37; }
-.banner {
-  margin-top: 12px; padding: 10px 12px; border-radius: 8px;
-  background: #f8d7da; color: #58151c; font-weight: 600;
+.muted { color: var(--muted); font-size: 13px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 9px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+td { vertical-align: baseline; }
+th {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em;
 }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.num, td.num { text-align: right; }
+td.ip { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 14px; }
+tr.alert td { background: #fffbf2; }
+tbody tr:last-child td { border-bottom: 0; }
+.pill {
+  display: inline-block; padding: 1px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 700;
+}
+.pill-alert { background: var(--amber-bg); color: var(--amber); }
+.pill-block { background: var(--red-bg); color: var(--red); }
+footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
 """.strip()
 
 
@@ -52,10 +108,6 @@ class Row:
 
 def _esc(x: object) -> str:
     return html.escape(str(x))
-
-
-def _td(x: object) -> str:
-    return f"<td>{_esc(x)}</td>"
 
 
 def read_lines(path: Path) -> list[str]:
@@ -182,28 +234,32 @@ def _build_rows(
     return rows
 
 
-def _render_blocklist_banner(report: Report) -> str:
-    if not report.blocklisted_logins:
-        return ""
-    ips = ", ".join(_esc(ip) for ip in report.blocklisted_logins)
-    return f'\n    <div class="banner">Successful login from blocklisted IP: {ips}</div>'
+def _render_banners(report: Report) -> str:
+    if report.blocklisted_logins:
+        ips = ", ".join(_esc(ip) for ip in report.blocklisted_logins)
+        return (
+            f'<div class="banner banner-critical">Successful login from blocklisted IP: {ips}</div>'
+        )
+    if report.blocklisted:
+        ips = ", ".join(_esc(ip) for ip, _ in report.blocklisted)
+        return f'<div class="banner banner-warning">Blocklisted IPs seen: {ips}</div>'
+    return ""
 
 
-def _render_meta(file_name: str, report: Report, fail_threshold: int) -> str:
-    severity = Severity(report.severity).value
-    badge_class = "badge alert" if report.alerts else "badge"
-    badge_text = "ALERTS present" if report.alerts else "No alerts"
-
-    return f"""
-  <div class="meta">
-    <div><b>File:</b> {_esc(file_name)}</div>
-    <div><b>Severity:</b> <span class="sev sev-{severity.lower()}">{severity}</span></div>
-    <div><b>Total lines:</b> {report.total_lines}</div>
-    <div><b>Accepted:</b> {report.accepted_total} &nbsp; <b>Failed:</b> {report.failed_total}</div>
-    <div><b>Fail threshold:</b> {fail_threshold}</div>
-    <div class="{badge_class}">{badge_text}</div>{_render_blocklist_banner(report)}
-  </div>
-""".strip()
+def _render_stats(report: Report, unique_ips: int, fail_threshold: int) -> str:
+    stats = [
+        ("Lines", report.total_lines),
+        ("Unique IPs", unique_ips),
+        ("Accepted", report.accepted_total),
+        ("Failed", report.failed_total),
+        ("Alerting IPs", len(report.alerts)),
+        ("Fail threshold", fail_threshold),
+    ]
+    cards = "".join(
+        f'<div class="stat"><div class="label">{label}</div><div class="value">{value}</div></div>'
+        for label, value in stats
+    )
+    return f'<section class="stats">{cards}</section>'
 
 
 def _render_table(rows: list[Row]) -> str:
@@ -212,9 +268,9 @@ def _render_table(rows: list[Row]) -> str:
     <thead>
       <tr>
         <th class="sortable" data-key="ip" data-type="text">IP</th>
-        <th class="sortable" data-key="total" data-type="num">Total</th>
-        <th class="sortable" data-key="failed" data-type="num">Failed</th>
-        <th class="sortable" data-key="accepted" data-type="num">Accepted</th>
+        <th class="sortable num" data-key="total" data-type="num">Events</th>
+        <th class="sortable num" data-key="failed" data-type="num">Failed</th>
+        <th class="sortable num" data-key="accepted" data-type="num">Accepted</th>
         <th class="sortable" data-key="alert" data-type="text">Alert</th>
       </tr>
     </thead>
@@ -223,13 +279,18 @@ def _render_table(rows: list[Row]) -> str:
 
     body_lines: list[str] = []
     for r in rows:
-        alert_text = "BLOCKLISTED" if r.blocklisted else ("YES" if r.alert else "")
-        cells = f"{_td(r.ip)}{_td(r.total)}{_td(r.failed)}{_td(r.accepted)}{_td(alert_text)}"
-        cls = "alert" if r.alert else ""
+        if r.blocklisted:
+            alert_text, pill = "BLOCKLISTED", '<span class="pill pill-block">BLOCKLISTED</span>'
+        elif r.alert:
+            alert_text, pill = "YES", '<span class="pill pill-alert">ALERT</span>'
+        else:
+            alert_text, pill = "", ""
         body_lines.append(
-            f"<tr class='{cls}' data-ip='{_esc(r.ip)}' data-total='{r.total}' "
-            f"data-failed='{r.failed}' data-accepted='{r.accepted}' data-alert='{alert_text}'>"
-            f"{cells}</tr>"
+            f"<tr class='{'alert' if r.alert else ''}' data-ip='{_esc(r.ip)}' "
+            f"data-total='{r.total}' data-failed='{r.failed}' data-accepted='{r.accepted}' "
+            f"data-alert='{alert_text}'>"
+            f"<td class='ip'>{_esc(r.ip)}</td><td class='num'>{r.total}</td>"
+            f"<td class='num'>{r.failed}</td><td class='num'>{r.accepted}</td><td>{pill}</td></tr>"
         )
     footer = """
     </tbody>
@@ -247,40 +308,51 @@ def render_html_report(
     accepted_counter: Counter[str],
     fail_threshold: int,
 ) -> str:
+    """Render a self-contained HTML report: no external CSS, JS, fonts or images."""
+    severity = Severity(report.severity).value
     blocklisted = {ip for ip, _ in report.blocklisted}
     rows = _build_rows(ip_counter, failed_counter, accepted_counter, fail_threshold, blocklisted)
-    meta_html = _render_meta(file_name, report, fail_threshold)
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     chart_html = _render_bar_chart(rows)
-    table_html = _render_table(rows)
-
-    controls_html = """
-  <div class="controls">
-    <input id="q" type="search" placeholder="Search IP / numbers…" autocomplete="off" />
-    <label><input id="onlyAlerts" type="checkbox" /> Only alerts</label>
-    <span class="small" id="count"></span>
-  </div>
-""".strip()
+    chart_section = f'<section class="card chart">{chart_html}</section>' if chart_html else ""
 
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Log Report - {_esc(file_name)}</title>
+  <title>{_esc(file_name)} - log-analyzer report</title>
   <style>
-    {HTML_STYLE}
+{HTML_STYLE}
   </style>
 </head>
 <body>
-  <h1>Log report</h1>
-  {meta_html}
+<main>
+  <header>
+    <div>
+      <div class="eyebrow">log-analyzer security report</div>
+      <h1>{_esc(file_name)}</h1>
+    </div>
+    <span class="sev sev-{severity.lower()}">Severity: {severity}</span>
+  </header>
 
-  {chart_html}
+  {_render_stats(report, len(ip_counter), fail_threshold)}
+  {_render_banners(report)}
 
-  {controls_html}
+  {chart_section}
 
-  <h2>By IP</h2>
-  {table_html}
+  <section class="card">
+    <h2>Activity by IP</h2>
+    <div class="controls">
+      <input id="q" type="search" placeholder="Filter by IP or number" autocomplete="off" />
+      <label><input id="onlyAlerts" type="checkbox" /> Only alerts</label>
+      <span class="muted" id="count"></span>
+    </div>
+    {_render_table(rows)}
+  </section>
+
+  <footer>Generated {generated} by log-analyzer {__version__}</footer>
+</main>
 
   <script>
     (function () {{
@@ -312,7 +384,7 @@ def render_html_report(
           tr.style.display = show ? '' : 'none';
           if (show) shown++;
         }}
-        count.textContent = `Showing ${{shown}} / ${{rows.length}}`;
+        count.textContent = `Showing ${{shown}} of ${{rows.length}}`;
       }}
 
       function sortBy(key, type, direction) {{
@@ -397,30 +469,34 @@ def _render_bar_chart(rows: list[Row], max_bars: int = 10) -> str:
     if not top:
         return ""
 
-    max_failed = max(r.failed for r in top) or 1
-    bar_height = 22
-    gap = 6
-    chart_height = len(top) * (bar_height + gap)
-    label_width = 140
-    chart_width = 420
-    svg_width = label_width + chart_width + 50
+    max_failed = max(r.failed for r in top)
+    bar_height, gap = 22, 8
+    # Labels use a monospace font, so their width is predictable: ~7.3 px per
+    # character at 12 px. Sizing the column to the longest IP keeps IPv6
+    # addresses from being clipped.
+    label_width = 16 + round(7.3 * max(len(r.ip) for r in top))
+    chart_width = 480
+    svg_width = label_width + chart_width + 40
+    svg_height = len(top) * (bar_height + gap) - gap
 
     bars = []
     for i, r in enumerate(top):
         y = i * (bar_height + gap)
-        w = int((r.failed / max_failed) * chart_width)
-        color = "#d9534f" if r.alert else "#5b8def"
+        w = max(2, round(r.failed / max_failed * chart_width))
+        color = "#d1495b" if r.alert else "#6b8fbf"
         bars.append(
-            f'<text x="{label_width - 8}" y="{y + 15}" text-anchor="end" '
-            f'font-size="12">{_esc(r.ip)}</text>'
+            f'<text x="{label_width - 10}" y="{y + 15}" text-anchor="end" font-size="12" '
+            f'font-family="ui-monospace, SFMono-Regular, Consolas, monospace" fill="#1f2328">'
+            f"{_esc(r.ip)}</text>"
             f'<rect x="{label_width}" y="{y}" width="{w}" height="{bar_height}" '
-            f'fill="{color}" rx="3"></rect>'
-            f'<text x="{label_width + w + 6}" y="{y + 15}" '
-            f'font-size="12">{r.failed}</text>'
+            f'fill="{color}" rx="4"></rect>'
+            f'<text x="{label_width + w + 8}" y="{y + 15}" font-size="12" fill="#656d76">'
+            f"{r.failed}</text>"
         )
 
     return (
-        "<h2>Top failed IPs</h2>\n"
-        f'<svg width="{svg_width}" height="{chart_height}" '
-        f'xmlns="http://www.w3.org/2000/svg" role="img">\n' + "\n".join(bars) + "\n</svg>"
+        "<h2>Failed attempts by IP</h2>\n"
+        f'<svg viewBox="0 0 {svg_width} {svg_height}" width="{svg_width}" height="{svg_height}" '
+        f'xmlns="http://www.w3.org/2000/svg" role="img" '
+        f'aria-label="Bar chart of failed attempts per IP">\n' + "\n".join(bars) + "\n</svg>"
     )
