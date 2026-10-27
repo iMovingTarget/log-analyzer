@@ -46,10 +46,13 @@ def _td(x: object) -> str:
 
 
 def read_lines(path: Path) -> list[str]:
-    path = Path(path)
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return path.read_text(encoding="utf-8").splitlines()
+    """Read a log file as a list of lines.
+
+    Undecodable bytes become U+FFFD instead of raising: real auth logs contain
+    binary junk (scanners send raw bytes as usernames), and one bad byte must
+    not abort the whole analysis.
+    """
+    return Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
 
 
 def resolve_output_paths(out: Path, file_stem: str) -> tuple[Path, Path, Path]:
@@ -313,10 +316,19 @@ def render_html_report(
 
 
 def load_ip_list(path: Path | None) -> set[str]:
-    if path is None or not path.exists():
+    """Load IPs from a file, one per line. Blank lines and # comments are ignored.
+
+    A path that was given but does not exist raises FileNotFoundError. Treating a
+    mistyped allowlist as empty would silently switch filtering off.
+    """
+    if path is None:
         return set()
-    lines = path.read_text(encoding="utf-8").splitlines()
-    return {line.strip() for line in lines if line.strip() and not line.startswith("#")}
+    entries: set[str] = set()
+    for line in Path(path).read_text(encoding="utf-8", errors="replace").splitlines():
+        entry = line.split("#", 1)[0].strip()
+        if entry:
+            entries.add(entry)
+    return entries
 
 
 _geoip_reader_cache: dict[str, Any] = {}

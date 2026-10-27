@@ -18,7 +18,7 @@ from log_analyzer.io import (
 from log_analyzer.parsers import BaseParser
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="log-analyzer",
         description="Security log analyzer -- parses SSH, Nginx, and Apache logs, "
@@ -104,7 +104,7 @@ def parse_args() -> argparse.Namespace:
         help="File of IPs to always flag as failed, one per line",
     )
 
-    return p.parse_args()
+    return p.parse_args(argv)
 
 
 def _select_parser(args: argparse.Namespace, lines: list[str]) -> BaseParser:
@@ -197,17 +197,17 @@ def _run_watch_mode(args: argparse.Namespace, parser: BaseParser) -> None:
     tail_file(args.file, on_line)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     try:
         lines = read_lines(args.file)
-    except FileNotFoundError:
-        print(f"File not found: {args.file}")
+        allowlist = load_ip_list(args.allowlist)
+        blocklist = load_ip_list(args.blocklist)
+    except OSError as e:
+        print(f"error: cannot read {e.filename or args.file}: {e.strerror or e}", file=sys.stderr)
         return 2
 
-    allowlist = load_ip_list(args.allowlist)
-    blocklist = load_ip_list(args.blocklist)
     parser = _select_parser(args, lines)
 
     report, ip_counter, failed_counter, accepted_counter = analyze_lines(
