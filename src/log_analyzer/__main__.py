@@ -190,7 +190,7 @@ def _persist_to_storage(args: argparse.Namespace, report: Report) -> None:
 
 
 def _run_watch_mode(args: argparse.Namespace, parser: BaseParser) -> None:
-    """Tail the log file and print real-time rate-limit alerts. Never returns."""
+    """Follow the log file and print real-time rate alerts until Ctrl+C."""
     if not args.watch:
         return
     from log_analyzer.core import RateTracker
@@ -200,14 +200,17 @@ def _run_watch_mode(args: argparse.Namespace, parser: BaseParser) -> None:
 
     def on_line(line: str) -> None:
         event = parser.parse_line(line)
-        if event and event.event_type == "failed":
-            if tracker.record(event.ip):
-                print(
-                    f"[RATE ALERT] {event.ip} -- exceeded "
-                    f"{args.rate_limit} events in {args.rate_window}s"
-                )
+        if event and event.event_type == "failed" and tracker.record(event.ip):
+            print(
+                f"[RATE ALERT] {event.ip} -- exceeded "
+                f"{args.rate_limit} events in {args.rate_window}s"
+            )
 
-    tail_file(args.file, on_line)
+    print(f"[watch] Following {args.file} -- press Ctrl+C to stop")
+    try:
+        tail_file(args.file, on_line)
+    except KeyboardInterrupt:
+        print("\n[watch] Stopped.")
 
 
 def main(argv: list[str] | None = None) -> int:
