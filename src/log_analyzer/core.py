@@ -104,6 +104,7 @@ def analyze_lines(
     total_lines = len(lines)
     if parser is None:
         parser = detect_parser(lines)
+    parser.reset()
 
     allow_set = set(allowlist or ())
     block_set = set(blocklist or ())

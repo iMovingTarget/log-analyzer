@@ -89,8 +89,14 @@ IP per line; `#` starts a comment.
 
 | Log | `--log-format` | Counted as failed | Counted as accepted |
 | --- | --- | --- | --- |
-| OpenSSH (`sshd`) via syslog or journald | `ssh` | `Failed password`, `Failed publickey`, `Invalid user` | `Accepted password`, `publickey`, `keyboard-interactive` |
+| OpenSSH (`sshd`) via syslog or journald | `ssh` | each `Failed <method>` line; a connection that ends before login after naming a user, if it logged no `Failed` line | `Accepted <method>` |
 | nginx and Apache, common or combined format | `access` (aliases `nginx`, `apache`) | 4xx and 5xx responses | everything else |
+
+For SSH, one attempt counts once even though sshd may log it on several lines (`Invalid user`,
+`Failed password for invalid user`, `Connection closed by invalid user ... [preauth]`), and on a
+server that only accepts keys, where the pre-auth disconnect is often the only trace, it still
+counts. The client address is read from sshd's own `from <ip> port <n>` text, never from the
+username, which the client chooses.
 
 With the default `--log-format auto`, every parser scores how many of the first 200 non-blank
 lines it recognises and the best score wins, so a stray keyword cannot switch the format.
@@ -167,8 +173,12 @@ A few decisions worth knowing:
 
 - Classic syslog timestamps carry no year or time zone: the year is inferred and the local zone
   of the machine running the analysis is assumed.
-- OpenSSH logs both `Invalid user X` and `Failed password for invalid user X` for one attempt,
-  so attempts on non-existent accounts can be counted twice.
+- SSH connections are told apart by client address and port. Log excerpts that start
+  mid-connection, or rsyslog's `message repeated N times` lines (counted once), can make the
+  count differ slightly from the true number of attempts.
+- On `Failed publickey` lines for client certificates, sshd logs the certificate's key ID, which
+  the client chooses, after the address; a crafted key ID could still mislead address extraction
+  on those lines. Usernames cannot.
 - For access logs, any 4xx or 5xx counts as a failure, so path scanning (404s) is treated like
   failed logins.
 - The whole file is read into memory: fine for daily logs, not for multi-gigabyte archives.

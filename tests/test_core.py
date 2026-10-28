@@ -28,7 +28,8 @@ def test_classification():
     kind = lambda line: SSHParser().parse_line(line).event_type  # noqa: E731
 
     assert kind("Failed password for root from 1.2.3.4") == "failed"
-    assert kind("Invalid user admin from 1.2.3.4") == "failed"
+    # The attempt is counted by the line that follows (Failed ... or the pre-auth disconnect).
+    assert kind("Invalid user admin from 1.2.3.4") == "other"
     assert kind("Accepted password for bob from 1.2.3.4") == "accepted"
     assert kind("Accepted publickey for bob from 1.2.3.4") == "accepted"
     assert kind("Connection closed by 1.2.3.4 port 22") == "other"
@@ -37,7 +38,8 @@ def test_classification():
 def test_analyze_lines_counts_and_alerts():
     lines = [
         "Failed password for root from 203.0.113.7 port 22",
-        "Invalid user admin from 203.0.113.7 port 22",
+        "Invalid user admin from 203.0.113.7 port 23",
+        "Connection closed by invalid user admin 203.0.113.7 port 23 [preauth]",
         "Accepted password for bob from 192.168.1.10 port 22",
         "Noise line without ip",
     ]
@@ -46,11 +48,11 @@ def test_analyze_lines_counts_and_alerts():
         lines, top=5, fail_threshold=1
     )
 
-    assert report.total_lines == 4
+    assert report.total_lines == 5
     assert report.failed_total == 2
     assert report.accepted_total == 1
 
-    assert ip_counter["203.0.113.7"] == 2
+    assert ip_counter["203.0.113.7"] == 3
     assert failed_counter["203.0.113.7"] == 2
     assert accepted_counter["192.168.1.10"] == 1
 
@@ -142,3 +144,19 @@ def test_rate_tracker_forgets_idle_ips():
 
     rt.record("192.0.2.1", now=t0 + timedelta(seconds=61))
     assert rt.tracked_ips() == 1
+
+
+def test_analyze_lines_and_siem_events_agree_when_sharing_a_parser():
+    # The CLI passes one parser to both; parser state must not leak between the passes.
+    from log_analyzer.siem import build_siem_events
+
+    lines = [
+        "Failed password for root from 203.0.113.7 port 40 ssh2",
+        "Connection closed by authenticating user root 203.0.113.7 port 40 [preauth]",
+        "Connection closed by authenticating user root 203.0.113.7 port 41 [preauth]",
+    ]
+    parser = SSHParser()
+    report, *_ = analyze_lines(lines, top=5, fail_threshold=1, parser=parser)
+    events = build_siem_events(lines, parser, "auth.log", 1)
+    assert report.failed_total == 2
+    assert [e.event_type for e in events] == ["failed", "other", "failed"]
