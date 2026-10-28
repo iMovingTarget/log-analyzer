@@ -5,6 +5,7 @@ from __future__ import annotations
 import ipaddress
 import re
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from itertools import islice
@@ -27,6 +28,9 @@ class BaseParser(ABC):
     @abstractmethod
     def parse_line(self, line: str) -> ParsedEvent | None:
         """Parse one log line. Return None if the line carries no client IP."""
+
+    def reset(self) -> None:  # noqa: B027 - optional hook; stateless parsers need nothing
+        """Forget state carried between lines; call before reading a log from the start."""
 
     @classmethod
     @abstractmethod
@@ -126,27 +130,181 @@ SSHD_TAG_RE = re.compile(r"\bsshd(?:-session)?(?:\[\d+\])?:")
 SSH_FAILED_RE = re.compile(r"failed (?:password|publickey)|invalid user", re.IGNORECASE)
 SSH_ACCEPTED_RE = re.compile(r"accepted (?:password|publickey|keyboard-interactive)", re.IGNORECASE)
 
+# The syslog header in front of an sshd message: optional timestamp and host, then the tag.
+# Anchored at the start, so an "sshd:" inside a username can't be mistaken for it.
+_SSHD_HEADER_RE = re.compile(
+    r"^(?:(?:[A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2}(?:\.\d+)?"
+    r"|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?) \S+ )?"
+    r"sshd(?:-session)?(?:\[\d+\])?: "
+)
+
+# sshd messages, matched against the whole message. The username is attacker-controlled and
+# may contain spaces or text shaped like "<ip> port <n>", so it is matched greedily and the
+# client address is taken from the fixed text after it, which the line must end with. Taking
+# the first IP-shaped token instead would let a username such as "10.9.8.7" frame that address.
+#
+# Each message has a kind, which decides how it is counted (see SSHParser):
+#   attempt   one failed authentication ("Failed <method> for ...")
+#   accepted  a successful login
+#   invalid   the client named an account that doesn't exist; not an attempt by itself
+#   limit     "maximum authentication attempts exceeded"; more lines for the connection follow
+#   end       the connection ended before authenticating, after a username was sent
+_SSH_ADDR = r"(?P<ip>[0-9A-Fa-f:.]+)(?: port (?P<port>\d+))?"
+_SSH_MESSAGES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "attempt",
+        re.compile(
+            rf"^Failed (?P<method>\S+) for (?P<invalid>invalid user )?(?P<user>.*) "
+            rf"from {_SSH_ADDR}(?: ssh2(?:: .*)?)?$"
+        ),
+    ),
+    (
+        "accepted",
+        re.compile(
+            rf"^Accepted (?P<method>\S+) for (?P<user>.*) from {_SSH_ADDR}(?: ssh2(?:: .*)?)?$"
+        ),
+    ),
+    ("invalid", re.compile(rf"^Invalid user (?P<user>.*) from {_SSH_ADDR}$")),
+    # A connection that ended before authenticating, after a username was sent. On a server
+    # without password logins this is often the only trace of a failed attempt: sshd logs
+    # "Failed publickey" at INFO only from the MaxAuthTries/2-th failure on one connection.
+    (
+        "end",
+        re.compile(
+            r"^(?:Connection closed by|Connection reset by|Disconnected from) "
+            r"(?P<who>invalid|authenticating) user (?P<user>.*) "
+            r"(?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+) \[preauth\]$"
+        ),
+    ),
+    (
+        "end",
+        re.compile(
+            r"^Disconnecting (?P<who>invalid|authenticating) user (?P<user>.*) "
+            r"(?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+): "
+            r"Too many authentication failures(?: \[preauth\])?$"
+        ),
+    ),
+    (
+        "limit",
+        re.compile(
+            r"^error: maximum authentication attempts exceeded for (?P<invalid>invalid user )?"
+            r"(?P<user>.*) from (?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+) ssh2(?: \[preauth\])?$"
+        ),
+    ),
+)
+
+
+# rsyslog's repeated-message reduction (on by default in Ubuntu) wraps a repeated message.
+_REPEATED_RE = re.compile(r"^message repeated \d+ times: \[ ?(?P<message>.*)\]$")
+
+
+def _sshd_message(line: str) -> str:
+    """The sshd message without its syslog header (a journald MESSAGE has none)."""
+    line = line.strip()
+    header = _SSHD_HEADER_RE.match(line)
+    message = line[header.end() :] if header else line
+    repeated = _REPEATED_RE.match(message)
+    return repeated.group("message") if repeated else message
+
+
+def _match_ssh_message(message: str) -> tuple[str, re.Match[str]] | None:
+    for kind, pattern in _SSH_MESSAGES:
+        m = pattern.match(message)
+        if m is None:
+            continue
+        try:
+            ipaddress.ip_address(m.group("ip"))
+        except ValueError:
+            continue
+        return kind, m
+    return None
+
 
 class SSHParser(BaseParser):
+    """OpenSSH's sshd, as logged by syslog (auth.log) or journald.
+
+    Each failed authentication counts once. sshd can log one attempt several times: an attempt
+    on an unknown account logs "Invalid user", then "Failed password for invalid user" (if the
+    client tried a password), then "Connection closed by invalid user ... [preauth]". So:
+
+    - "Failed <method>" lines are failures, one per attempt;
+    - the line that ends a connection before login is a failure only if no "Failed" line was
+      seen for that connection (on a server without password logins it is often the only
+      trace), and so is "maximum authentication attempts exceeded";
+    - "Invalid user" alone is "other": a later line for the same connection counts it.
+
+    Connections are told apart by client address and port, so the parser keeps a little state
+    between lines; call reset() before parsing a log from the start again.
+
+    Recognised messages carry ``user``, ``port``, ``method`` and ``invalid_user`` in ``extra``
+    where sshd logs them. Other lines with an address are "other" events for the first
+    IP-shaped token in them.
+    """
+
     name = "ssh"
+
+    #: Connections remembered at most; the oldest are forgotten first. A connection is
+    #: forgotten when its last line is seen, so this only bounds connections whose end is
+    #: missing from the log.
+    max_tracked_connections = 10_000
 
     def __init__(self, now: datetime | None = None) -> None:
         # Reference point for inferring the year of BSD syslog timestamps.
         self._now = now or datetime.now()
+        # (address, port) of connections that already produced a "failed" event.
+        self._counted: OrderedDict[tuple[str, int], None] = OrderedDict()
+
+    def reset(self) -> None:
+        self._counted.clear()
 
     def parse_line(self, line: str) -> ParsedEvent | None:
-        ip = extract_ip(line)
-        if not ip:
-            return None
-        if SSH_FAILED_RE.search(line):
-            etype = "failed"
-        elif SSH_ACCEPTED_RE.search(line):
-            etype = "accepted"
-        else:
-            etype = "other"
+        timestamp = parse_syslog_time(line, self._now)
+        found = _match_ssh_message(_sshd_message(line))
+        if found is None:
+            ip = extract_ip(line)
+            if not ip:
+                return None
+            return ParsedEvent(ip=ip, event_type="other", raw=line, timestamp=timestamp)
+
+        kind, m = found
+        fields = m.groupdict()
+        ip = str(ipaddress.ip_address(fields["ip"]))
+        port = int(fields["port"]) if fields.get("port") else None
+        extra: dict = {"user": fields["user"]}
+        if port is not None:
+            extra["port"] = port
+        if fields.get("method"):
+            extra["method"] = fields["method"]
+        if kind == "invalid" or fields.get("invalid") or fields.get("who") == "invalid":
+            extra["invalid_user"] = True
         return ParsedEvent(
-            ip=ip, event_type=etype, raw=line, timestamp=parse_syslog_time(line, self._now)
+            ip=ip,
+            event_type=self._count(kind, ip, port),
+            raw=line,
+            extra=extra,
+            timestamp=timestamp,
         )
+
+    def _count(self, kind: str, ip: str, port: int | None) -> str:
+        """The event type for a message, given what was seen earlier on its connection."""
+        if kind == "accepted":
+            return "accepted"
+        if kind == "invalid":
+            return "other"
+        if port is None:  # nothing to tell connections apart by
+            return "failed"
+        conn = (ip, port)
+        counted = conn in self._counted
+        if kind == "end":
+            self._counted.pop(conn, None)
+            return "other" if counted else "failed"
+        if kind == "limit" and counted:
+            return "other"
+        self._counted[conn] = None
+        self._counted.move_to_end(conn)
+        while len(self._counted) > self.max_tracked_connections:
+            self._counted.popitem(last=False)
+        return "failed"
 
     @classmethod
     def matches(cls, line: str) -> bool:

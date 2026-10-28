@@ -17,9 +17,13 @@ Oct 26 03:13:45 web-01 sshd[41034]: Failed password for invalid user admin from 
 Oct 26 03:13:52 web-01 sshd[41036]: Failed password for root from 203.0.113.42 port 63550 ssh2
 Oct 26 03:13:58 web-01 sshd[41038]: Connection closed by authenticating user root 203.0.113.42 port 60212 [preauth]
 Oct 26 03:14:05 web-01 sshd[41039]: Invalid user test from 198.51.100.17 port 62044
+Oct 26 03:14:07 web-01 sshd[41039]: Connection closed by invalid user test 198.51.100.17 port 62044 [preauth]
 Oct 26 03:14:14 web-01 sshd[41042]: Invalid user oracle from 198.51.100.17 port 35086
+Oct 26 03:14:16 web-01 sshd[41042]: Connection closed by invalid user oracle 198.51.100.17 port 35086 [preauth]
 Oct 26 03:14:20 web-01 sshd[41046]: Invalid user git from 198.51.100.17 port 52290
-Oct 26 03:14:22 web-01 sshd[41047]: Invalid user deploy from 198.51.100.17 port 59897
+Oct 26 03:14:21 web-01 sshd[41046]: Connection closed by invalid user git 198.51.100.17 port 52290 [preauth]
+Oct 26 03:14:22 web-01 sshd[41047]: Invalid user ftpuser from 198.51.100.17 port 59897
+Oct 26 03:14:24 web-01 sshd[41047]: Connection closed by invalid user ftpuser 198.51.100.17 port 59897 [preauth]
 Oct 26 03:14:27 web-01 sshd[41051]: Failed password for deploy from 198.51.100.17 port 44102 ssh2
 Oct 26 03:14:29 web-01 sshd[41052]: Accepted password for deploy from 198.51.100.17 port 44107 ssh2
 Oct 26 03:14:53 web-01 systemd-logind[612]: New session 4182 of user deploy.

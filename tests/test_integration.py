@@ -20,6 +20,8 @@ def test_analyze_real_fixture_file():
 
     assert isinstance(parser, SSHParser)
     assert report.total_lines == 5
+    # Two failed passwords and a connection closed by an authenticating user. The lone
+    # "Invalid user" line is not an attempt by itself.
     assert report.failed_total == 3
     assert report.accepted_total == 1
     assert ip_counter["203.0.113.7"] == 2

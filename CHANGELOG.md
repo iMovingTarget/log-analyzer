@@ -4,6 +4,35 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-10-28
+
+SSH parsing fixes, found by running log-analyzer against a live OpenSSH 10.2 server that only
+accepts keys.
+
+### Fixed
+- The SSH client address is read from sshd's own `from <ip> port <n>` text. It used to be the
+  first IP-shaped token in the line, so a login attempt as user `10.9.8.7` was reported as
+  coming from 10.9.8.7: an attacker could frame any address and keep their own off the report.
+- Failed logins on servers that only accept keys are counted. sshd often logs only the
+  pre-auth disconnect for them (`Connection closed by authenticating user ... [preauth]`), and
+  those lines were classed as "other", along with `Too many authentication failures` and
+  `maximum authentication attempts exceeded`.
+- Each SSH attempt counts once. An attempt on an unknown account was counted two or three
+  times (`Invalid user`, `Failed password for invalid user`, and the pre-auth disconnect).
+
+### Changed
+- An `Invalid user` line by itself is "other"; the line that follows on the same connection
+  counts the attempt.
+- Any `Accepted <method>` line is a successful login (was password, publickey and
+  keyboard-interactive only).
+- SSH events carry `user`, `port`, `method` and `invalid_user` in `extra` where sshd logs them.
+- rsyslog's `message repeated N times: [...]` lines are unwrapped (and count once).
+- `examples/auth.log` gains the disconnect lines sshd writes after each `Invalid user`.
+
+### Added
+- `BaseParser.reset()`. The SSH parser keeps a little state per connection, so
+  `analyze_lines()` and the SIEM pass reset the parser before reading a log.
+
 ## [0.5.0] - 2026-10-27
 
 ### Fixed
@@ -46,4 +75,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 0.1 to 0.4 were developed before this changelog existed; see the git history.
 
-[0.5.0]: https://github.com/iMovingTarget/log_analyzer/releases/tag/v0.5.0
+[0.6.0]: https://github.com/iMovingTarget/log-analyzer/releases/tag/v0.6.0
+[0.5.0]: https://github.com/iMovingTarget/log-analyzer/releases/tag/v0.5.0

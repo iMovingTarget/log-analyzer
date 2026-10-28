@@ -46,6 +46,7 @@ def build_siem_events(
     ingested_at = datetime.now(timezone.utc).isoformat()
     failures: Counter[str] = Counter()
     events: list[SIEMEvent] = []
+    parser.reset()
 
     for line in lines:
         parsed = parser.parse_line(line)
