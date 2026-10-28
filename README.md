@@ -38,20 +38,20 @@ Log format: ssh (auto-detected)
 
 log-analyzer report: auth.log
 Severity: CRITICAL
-Lines: 34 | Accepted: 3 | Failed: 25
+Lines: 38 | Accepted: 3 | Failed: 26
 
 Top 5 IPs by events:
   203.0.113.42                      15
-  198.51.100.17                      6
+  198.51.100.17                     10
   ...
 
 ALERTS (failed >= 3):
-  203.0.113.42                  failed=14
+  203.0.113.42                  failed=15
   198.51.100.17                 failed=5
   2001:db8:85a3::8a2e:370:7334  failed=3
 
 BLOCKLISTED IPs seen:
-  198.51.100.17                 events=6
+  198.51.100.17                 events=10
   203.0.113.99                  events=1
 !! Successful login from blocklisted IP 198.51.100.17
 Wrote CSV  -> reports/auth.csv
