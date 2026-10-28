@@ -194,3 +194,46 @@ def test_ssh_unrecognised_line_is_other_with_its_first_address():
         "Feb  5 12:10:01 host sshd[1]: Received disconnect from 203.0.113.7 port 55222:11: Bye"
     )
     assert (e.ip, e.event_type) == ("203.0.113.7", "other")
+
+
+# --- SSH failures on servers without password logins (regression: classed as "other") ---
+# Lines as logged by OpenSSH 10.2 (sshd-session) on a key-only server.
+
+
+def test_ssh_preauth_disconnects_after_a_username_are_failures():
+    p = SSHParser()
+    for line, user in (
+        ("Connection reset by authenticating user sun 203.0.113.5 port 63999 [preauth]", "sun"),
+        ("Connection closed by authenticating user root 203.0.113.5 port 4 [preauth]", "root"),
+        ("Connection reset by invalid user nwtest 203.0.113.5 port 63998 [preauth]", "nwtest"),
+        ("Disconnected from invalid user admin 203.0.113.5 port 5 [preauth]", "admin"),
+        (
+            "Disconnecting authenticating user root 203.0.113.5 port 6:"
+            " Too many authentication failures [preauth]",
+            "root",
+        ),
+        (
+            "error: maximum authentication attempts exceeded for invalid user a b"
+            " from 203.0.113.5 port 7 ssh2 [preauth]",
+            "a b",
+        ),
+    ):
+        e = p.parse_line(line)
+        assert (e.ip, e.event_type, e.extra["user"]) == ("203.0.113.5", "failed", user), line
+
+
+def test_ssh_disconnects_without_a_login_attempt_are_not_failures():
+    p = SSHParser()
+    for line in (
+        "Connection closed by 203.0.113.5 port 4 [preauth]",  # banner grab, no username sent
+        "Disconnected from user sun 192.0.2.10 port 51122",  # end of a logged-in session
+        "Received disconnect from 192.0.2.10 port 51122:11: disconnected by user",
+    ):
+        assert p.parse_line(line).event_type == "other", line
+
+
+def test_ssh_preauth_username_cannot_frame_another_address():
+    e = SSHParser().parse_line(
+        "Connection closed by invalid user x 10.9.8.7 port 22 203.0.113.5 port 4242 [preauth]"
+    )
+    assert (e.ip, e.extra["user"], e.extra["port"]) == ("203.0.113.5", "x 10.9.8.7 port 22", 4242)

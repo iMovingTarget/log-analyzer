@@ -154,6 +154,32 @@ _SSH_MESSAGES: tuple[tuple[str, re.Pattern[str]], ...] = (
         ),
     ),
     ("failed", re.compile(rf"^Invalid user (?P<user>.*) from {_SSH_ADDR}$")),
+    # A connection that ended before authenticating, after a username was sent. On a server
+    # without password logins this is often the only trace of a failed attempt: sshd logs
+    # "Failed publickey" at INFO only from the MaxAuthTries/2-th failure on one connection.
+    (
+        "failed",
+        re.compile(
+            r"^(?:Connection closed by|Connection reset by|Disconnected from) "
+            r"(?:invalid|authenticating) user (?P<user>.*) "
+            r"(?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+) \[preauth\]$"
+        ),
+    ),
+    (
+        "failed",
+        re.compile(
+            r"^Disconnecting (?:invalid|authenticating) user (?P<user>.*) "
+            r"(?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+): "
+            r"Too many authentication failures(?: \[preauth\])?$"
+        ),
+    ),
+    (
+        "failed",
+        re.compile(
+            r"^error: maximum authentication attempts exceeded for (?:invalid user )?"
+            r"(?P<user>.*) from (?P<ip>[0-9A-Fa-f:.]+) port (?P<port>\d+) ssh2(?: \[preauth\])?$"
+        ),
+    ),
 )
 
 
