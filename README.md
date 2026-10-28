@@ -1,6 +1,6 @@
 # log-analyzer
 
-[![CI](https://github.com/iMovingTarget/log_analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/iMovingTarget/log_analyzer/actions/workflows/ci.yml)
+[![CI](https://github.com/iMovingTarget/log-analyzer/actions/workflows/ci.yml/badge.svg)](https://github.com/iMovingTarget/log-analyzer/actions/workflows/ci.yml)
 ![Python 3.10 to 3.14](https://img.shields.io/badge/python-3.10%20to%203.14-3776AB)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -26,8 +26,8 @@ MySQL.
 ## Quick start
 
 ```bash
-git clone https://github.com/iMovingTarget/log_analyzer.git
-cd log_analyzer
+git clone https://github.com/iMovingTarget/log-analyzer.git
+cd log-analyzer
 pip install .
 
 log-analyzer --file examples/auth.log --blocklist examples/blocklist.txt

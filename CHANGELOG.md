@@ -75,5 +75,5 @@ accepts keys.
 
 0.1 to 0.4 were developed before this changelog existed; see the git history.
 
-[0.6.0]: https://github.com/iMovingTarget/log_analyzer/releases/tag/v0.6.0
-[0.5.0]: https://github.com/iMovingTarget/log_analyzer/releases/tag/v0.5.0
+[0.6.0]: https://github.com/iMovingTarget/log-analyzer/releases/tag/v0.6.0
+[0.5.0]: https://github.com/iMovingTarget/log-analyzer/releases/tag/v0.5.0

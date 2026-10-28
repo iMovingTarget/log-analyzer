@@ -36,8 +36,8 @@ mysql = ["mysql-connector-python>=8.0"]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.urls]
-Homepage = "https://github.com/iMovingTarget/log_analyzer"
-Issues = "https://github.com/iMovingTarget/log_analyzer/issues"
+Homepage = "https://github.com/iMovingTarget/log-analyzer"
+Issues = "https://github.com/iMovingTarget/log-analyzer/issues"
 
 [project.scripts]
 log-analyzer = "log_analyzer.__main__:main"
