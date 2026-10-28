@@ -141,3 +141,56 @@ def test_access_log_time_parsed():
     assert AccessLogParser().parse_line(LINE_200).timestamp == datetime(
         2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc
     )
+
+
+# --- SSH client address and fields (regression: the first IP-shaped token was used) ---
+
+
+def test_ssh_username_cannot_frame_another_address():
+    # Usernames are chosen by the client. An IP-shaped one used to be reported as the source.
+    p = SSHParser()
+    for line in (
+        "Oct 28 16:10:01 vm sshd-session[1201]: Invalid user 10.9.8.7 from 203.0.113.5 port 4242",
+        "Failed password for invalid user x from 10.9.8.7 port 22 from 203.0.113.5 port 4242 ssh2",
+        "Failed password for 10.9.8.7 from 203.0.113.5 port 4242 ssh2",
+        "Accepted password for 10.9.8.7 from 203.0.113.5 port 4242 ssh2",
+    ):
+        e = p.parse_line(line)
+        assert e is not None and e.ip == "203.0.113.5", line
+        assert e.event_type in ("failed", "accepted")
+
+
+def test_ssh_tag_inside_a_username_is_not_a_header():
+    e = SSHParser().parse_line("Invalid user sshd: from 203.0.113.5 port 4242")
+    assert (e.ip, e.event_type, e.extra["user"]) == ("203.0.113.5", "failed", "sshd:")
+
+
+def test_ssh_fields_are_extracted():
+    e = SSHParser().parse_line(
+        "2026-10-28T16:10:05+00:00 vm sshd-session[1205]: Failed publickey for sun"
+        " from 2001:db8::7 port 64002 ssh2: ED25519 SHA256:abc"
+    )
+    assert (e.ip, e.event_type) == ("2001:db8::7", "failed")
+    assert e.extra == {"user": "sun", "port": 64002, "method": "publickey"}
+
+
+def test_ssh_journald_message_without_header():
+    e = SSHParser().parse_line(
+        "Accepted publickey for sun from 192.0.2.10 port 51122 ssh2: RSA-CERT SHA256:abc ID x"
+    )
+    assert (e.ip, e.event_type, e.extra["method"]) == ("192.0.2.10", "accepted", "publickey")
+
+
+def test_ssh_rsyslog_repeated_message_is_unwrapped():
+    e = SSHParser().parse_line(
+        "Feb  5 12:10:01 host sshd[1]: message repeated 2 times: [ Failed password for root"
+        " from 203.0.113.7 port 55222 ssh2]"
+    )
+    assert (e.ip, e.event_type, e.extra["user"]) == ("203.0.113.7", "failed", "root")
+
+
+def test_ssh_unrecognised_line_is_other_with_its_first_address():
+    e = SSHParser().parse_line(
+        "Feb  5 12:10:01 host sshd[1]: Received disconnect from 203.0.113.7 port 55222:11: Bye"
+    )
+    assert (e.ip, e.event_type) == ("203.0.113.7", "other")

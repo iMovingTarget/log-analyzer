@@ -126,8 +126,71 @@ SSHD_TAG_RE = re.compile(r"\bsshd(?:-session)?(?:\[\d+\])?:")
 SSH_FAILED_RE = re.compile(r"failed (?:password|publickey)|invalid user", re.IGNORECASE)
 SSH_ACCEPTED_RE = re.compile(r"accepted (?:password|publickey|keyboard-interactive)", re.IGNORECASE)
 
+# The syslog header in front of an sshd message: optional timestamp and host, then the tag.
+# Anchored at the start, so an "sshd:" inside a username can't be mistaken for it.
+_SSHD_HEADER_RE = re.compile(
+    r"^(?:(?:[A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2}(?:\.\d+)?"
+    r"|\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?) \S+ )?"
+    r"sshd(?:-session)?(?:\[\d+\])?: "
+)
+
+# sshd messages, matched against the whole message. The username is attacker-controlled and
+# may contain spaces or text shaped like "<ip> port <n>", so it is matched greedily and the
+# client address is taken from the fixed text after it, which the line must end with. Taking
+# the first IP-shaped token instead would let a username such as "10.9.8.7" frame that address.
+_SSH_ADDR = r"(?P<ip>[0-9A-Fa-f:.]+)(?: port (?P<port>\d+))?"
+_SSH_MESSAGES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    (
+        "failed",
+        re.compile(
+            rf"^Failed (?P<method>\S+) for (?P<invalid>invalid user )?(?P<user>.*) "
+            rf"from {_SSH_ADDR}(?: ssh2(?:: .*)?)?$"
+        ),
+    ),
+    (
+        "accepted",
+        re.compile(
+            rf"^Accepted (?P<method>\S+) for (?P<user>.*) from {_SSH_ADDR}(?: ssh2(?:: .*)?)?$"
+        ),
+    ),
+    ("failed", re.compile(rf"^Invalid user (?P<user>.*) from {_SSH_ADDR}$")),
+)
+
+
+# rsyslog's repeated-message reduction (on by default in Ubuntu) wraps a repeated message.
+_REPEATED_RE = re.compile(r"^message repeated \d+ times: \[ ?(?P<message>.*)\]$")
+
+
+def _sshd_message(line: str) -> str:
+    """The sshd message without its syslog header (a journald MESSAGE has none)."""
+    line = line.strip()
+    header = _SSHD_HEADER_RE.match(line)
+    message = line[header.end() :] if header else line
+    repeated = _REPEATED_RE.match(message)
+    return repeated.group("message") if repeated else message
+
+
+def _match_ssh_message(message: str) -> tuple[str, re.Match[str]] | None:
+    for event_type, pattern in _SSH_MESSAGES:
+        m = pattern.match(message)
+        if m is None:
+            continue
+        try:
+            ipaddress.ip_address(m.group("ip"))
+        except ValueError:
+            continue
+        return event_type, m
+    return None
+
 
 class SSHParser(BaseParser):
+    """OpenSSH's sshd, as logged by syslog (auth.log) or journald.
+
+    Recognised messages are parsed field by field and carry ``user``, ``port`` and ``method``
+    in ``extra``. Other lines with an address are returned as "other" events for the first
+    IP-shaped token in them.
+    """
+
     name = "ssh"
 
     def __init__(self, now: datetime | None = None) -> None:
@@ -135,17 +198,27 @@ class SSHParser(BaseParser):
         self._now = now or datetime.now()
 
     def parse_line(self, line: str) -> ParsedEvent | None:
-        ip = extract_ip(line)
-        if not ip:
-            return None
-        if SSH_FAILED_RE.search(line):
-            etype = "failed"
-        elif SSH_ACCEPTED_RE.search(line):
-            etype = "accepted"
-        else:
-            etype = "other"
+        timestamp = parse_syslog_time(line, self._now)
+        found = _match_ssh_message(_sshd_message(line))
+        if found is None:
+            ip = extract_ip(line)
+            if not ip:
+                return None
+            return ParsedEvent(ip=ip, event_type="other", raw=line, timestamp=timestamp)
+
+        event_type, m = found
+        fields = m.groupdict()
+        extra: dict = {"user": fields["user"]}
+        if fields.get("port"):
+            extra["port"] = int(fields["port"])
+        if fields.get("method"):
+            extra["method"] = fields["method"]
         return ParsedEvent(
-            ip=ip, event_type=etype, raw=line, timestamp=parse_syslog_time(line, self._now)
+            ip=str(ipaddress.ip_address(fields["ip"])),
+            event_type=event_type,
+            raw=line,
+            extra=extra,
+            timestamp=timestamp,
         )
 
     @classmethod
